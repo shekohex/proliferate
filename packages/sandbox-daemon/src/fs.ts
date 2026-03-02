@@ -167,15 +167,15 @@ export class FsTransport {
 
 		const resolved = resolveSecure(this.workspaceRoot, relativePath);
 
+		// Verify symlink target BEFORE write to prevent escape
+		verifySymlinkTarget(this.workspaceRoot, resolved);
+
 		// Create parent directories if needed
 		const dir = dirname(resolved);
 		await mkdir(dir, { recursive: true });
 
 		// Write the file
 		writeFileSync(resolved, content, "utf-8");
-
-		// Verify symlink target after write
-		verifySymlinkTarget(this.workspaceRoot, resolved);
 
 		this.logger.debug({ path: relativePath, bytes: contentBytes }, "File written");
 

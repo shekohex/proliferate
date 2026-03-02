@@ -20,7 +20,7 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Logger } from "@proliferate/logger";
-import { authenticateRequest, parseSignatureHeader, validateSignature } from "./auth.js";
+import { authenticateRequest, parseSignatureHeader, setSessionToken, validateSignature } from "./auth.js";
 import type { EventBus } from "./event-bus.js";
 import { FsSecurityError, type FsTransport } from "./fs.js";
 import type { PortWatcher } from "./ports.js";
@@ -110,12 +110,12 @@ export class Router {
 	// Platform routes (/_proliferate/*)
 	// -----------------------------------------------------------------------
 
-	private handlePlatformRoute(
+	private async handlePlatformRoute(
 		req: IncomingMessage,
 		res: ServerResponse,
 		pathname: string,
 		url: string,
-	): void {
+	): Promise<void> {
 		// Health endpoint does NOT require auth
 		if (pathname === "/_proliferate/health" && req.method === "GET") {
 			this.handleHealth(res);
@@ -132,10 +132,24 @@ export class Router {
 		if (sigHeader) {
 			const components = parseSignatureHeader(sigHeader);
 			if (components) {
-				const bodyHash = createHash("sha256").update("").digest("hex");
-				if (!validateSignature(req.method ?? "GET", pathname, bodyHash, components)) {
-					sendJson(res, 403, { error: "Invalid signature" });
-					return;
+				// For requests with bodies, read and hash the actual body.
+				// For bodyless methods, hash empty string.
+				const hasBody = req.method === "POST" || req.method === "PUT" || req.method === "PATCH";
+				if (hasBody) {
+					const body = await readBody(req);
+					const bodyHash = createHash("sha256").update(body).digest("hex");
+					if (!validateSignature(req.method ?? "GET", pathname, bodyHash, components)) {
+						sendJson(res, 403, { error: "Invalid signature" });
+						return;
+					}
+					// Store body for downstream handlers to avoid re-reading
+					(req as IncomingMessage & { _body?: string })._body = body;
+				} else {
+					const bodyHash = createHash("sha256").update("").digest("hex");
+					if (!validateSignature(req.method ?? "GET", pathname, bodyHash, components)) {
+						sendJson(res, 403, { error: "Invalid signature" });
+						return;
+					}
 				}
 			}
 		}
@@ -291,7 +305,8 @@ export class Router {
 	}
 
 	private handlePtyWrite(req: IncomingMessage, res: ServerResponse): void {
-		readBody(req)
+		const preRead = (req as IncomingMessage & { _body?: string })._body;
+		(preRead !== undefined ? Promise.resolve(preRead) : readBody(req))
 			.then((body) => {
 				const parsed = JSON.parse(body) as { processId: string; data: string };
 				if (!parsed.processId || typeof parsed.data !== "string") {
@@ -347,7 +362,8 @@ export class Router {
 	}
 
 	private handleFsWrite(req: IncomingMessage, res: ServerResponse): void {
-		readBody(req)
+		const preRead = (req as IncomingMessage & { _body?: string })._body;
+		(preRead !== undefined ? Promise.resolve(preRead) : readBody(req))
 			.then(async (body) => {
 				const parsed = JSON.parse(body) as { path: string; content: string };
 				if (!parsed.path || typeof parsed.content !== "string") {
@@ -378,12 +394,23 @@ export class Router {
 	// Token refresh (B7)
 	// -----------------------------------------------------------------------
 
-	private handleTokenRefresh(_req: IncomingMessage, res: ServerResponse): void {
-		// Token refresh is mediated by the daemon. Gateway sends a new token
-		// via this endpoint, and the daemon updates its internal state.
-		// In the current implementation, this is a placeholder for the
-		// gateway-driven token rotation flow.
-		sendJson(res, 200, { ok: true, message: "Token refresh accepted" });
+	private handleTokenRefresh(req: IncomingMessage, res: ServerResponse): void {
+		const preRead = (req as IncomingMessage & { _body?: string })._body;
+		(preRead !== undefined ? Promise.resolve(preRead) : readBody(req))
+			.then((body) => {
+				const parsed = JSON.parse(body) as { token?: string; ttlMinutes?: number };
+				if (!parsed.token || typeof parsed.token !== "string") {
+					sendJson(res, 400, { error: "token is required" });
+					return;
+				}
+				const ttl = typeof parsed.ttlMinutes === "number" ? parsed.ttlMinutes : 60;
+				setSessionToken(parsed.token, ttl);
+				this.logger.info({ ttlMinutes: ttl }, "Session token rotated via refresh");
+				sendJson(res, 200, { ok: true });
+			})
+			.catch((err) => {
+				sendJson(res, 400, { error: err instanceof Error ? err.message : "Invalid request" });
+			});
 	}
 
 	// -----------------------------------------------------------------------

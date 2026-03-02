@@ -43,9 +43,11 @@ export function isTokenValid(): boolean {
 // ---------------------------------------------------------------------------
 
 export function validateBearerToken(authHeader: string | undefined): boolean {
-	if (!currentToken) {
-		// No token configured — allow (dev/testing mode)
-		return true;
+	const validToken = getSessionToken();
+	if (!validToken) {
+		// No token configured or token expired — reject unless never set
+		if (!currentToken) return true; // dev/testing mode
+		return false; // expired
 	}
 	if (!authHeader) {
 		return false;
@@ -55,7 +57,7 @@ export function validateBearerToken(authHeader: string | undefined): boolean {
 		return false;
 	}
 	const provided = Buffer.from(parts[1]);
-	const expected = Buffer.from(currentToken);
+	const expected = Buffer.from(validToken);
 	if (provided.length !== expected.length) {
 		return false;
 	}

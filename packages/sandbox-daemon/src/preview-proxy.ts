@@ -91,10 +91,19 @@ export class PreviewProxy {
 			},
 		});
 
-		proxyReq.on("upgrade", (_proxyRes, proxySocket, proxyHead) => {
-			socket.write(
-				`HTTP/1.1 101 Switching Protocols\r\nUpgrade: ${req.headers.upgrade}\r\nConnection: Upgrade\r\n\r\n`,
-			);
+		proxyReq.on("upgrade", (proxyRes, proxySocket, proxyHead) => {
+			// Forward the upstream's actual 101 response with all headers
+			// (including Sec-WebSocket-Accept required by browsers)
+			let responseHead = `HTTP/1.1 101 Switching Protocols\r\n`;
+			for (const [key, value] of Object.entries(proxyRes.headers)) {
+				if (value === undefined) continue;
+				const values = Array.isArray(value) ? value : [value];
+				for (const v of values) {
+					responseHead += `${key}: ${v}\r\n`;
+				}
+			}
+			responseHead += "\r\n";
+			socket.write(responseHead);
 			if (proxyHead.length > 0) {
 				socket.write(proxyHead);
 			}
