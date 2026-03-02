@@ -20,7 +20,12 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Logger } from "@proliferate/logger";
-import { authenticateRequest, parseSignatureHeader, setSessionToken, validateSignature } from "./auth.js";
+import {
+	authenticateRequest,
+	parseSignatureHeader,
+	setSessionToken,
+	validateSignature,
+} from "./auth.js";
 import type { EventBus } from "./event-bus.js";
 import { FsSecurityError, type FsTransport } from "./fs.js";
 import type { PortWatcher } from "./ports.js";

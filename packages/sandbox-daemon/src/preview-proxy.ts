@@ -94,7 +94,7 @@ export class PreviewProxy {
 		proxyReq.on("upgrade", (proxyRes, proxySocket, proxyHead) => {
 			// Forward the upstream's actual 101 response with all headers
 			// (including Sec-WebSocket-Accept required by browsers)
-			let responseHead = `HTTP/1.1 101 Switching Protocols\r\n`;
+			let responseHead = "HTTP/1.1 101 Switching Protocols\r\n";
 			for (const [key, value] of Object.entries(proxyRes.headers)) {
 				if (value === undefined) continue;
 				const values = Array.isArray(value) ? value : [value];
