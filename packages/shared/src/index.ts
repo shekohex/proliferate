@@ -1,5 +1,10 @@
 // Message types for Client <-> Durable Object WebSocket communication
 
+import type {
+	SessionOperatorStatus,
+	SessionRuntimeStatus,
+	SessionVisibility,
+} from "./contracts/v1-entities";
 import type { AutoStartOutputEntry, ConfigurationServiceCommand } from "./sandbox-provider";
 
 // Client source - where the message originated from
@@ -417,6 +422,22 @@ export interface ActionCompletedMessage {
 	};
 }
 
+export interface ControlPlaneSnapshotMessage {
+	type: "control_plane_snapshot";
+	payload: {
+		sessionId: string;
+		runtimeStatus: SessionRuntimeStatus | null;
+		operatorStatus: SessionOperatorStatus | null;
+		capabilitiesVersion: number | null;
+		visibility: SessionVisibility | null;
+		workerId: string | null;
+		workerRunId: string | null;
+		sandboxAvailable: boolean;
+		reconnectSequence: number;
+		emittedAt: string;
+	};
+}
+
 export type ServerMessage =
 	| InitMessage
 	| NewMessageEvent
@@ -442,7 +463,8 @@ export type ServerMessage =
 	| GitResultMessage
 	| ActionApprovalRequestMessage
 	| ActionApprovalResultMessage
-	| ActionCompletedMessage;
+	| ActionCompletedMessage
+	| ControlPlaneSnapshotMessage;
 
 export * from "./auth";
 
