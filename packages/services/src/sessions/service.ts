@@ -26,6 +26,7 @@ import type { SessionRow } from "./db";
 import * as sessionsDb from "./db";
 import { requestTitleGeneration } from "./generate-title";
 import { toSession, toSessions } from "./mapper";
+import { createSessionEvent } from "./v1-db";
 
 // ============================================
 // Service functions
@@ -47,6 +48,8 @@ export async function listSessions(
 		excludeCli: options?.excludeCli,
 		excludeAutomation: options?.excludeAutomation,
 		createdBy: options?.createdBy,
+		userId: options?.userId,
+		includeArchived: options?.includeArchived,
 	});
 	return toSessions(rows);
 }
@@ -336,6 +339,7 @@ async function createScratchSession(input: {
 	const doUrl = `${gatewayUrl}/session/${sessionId}`;
 	reqLog.info({ sessionType }, "Creating scratch session");
 
+	// K2: Ad-hoc task sessions default to private visibility
 	await createSessionWithAdmission(orgId, {
 		id: sessionId,
 		configurationId: null,
@@ -346,6 +350,7 @@ async function createScratchSession(input: {
 		sandboxProvider: provider.type,
 		snapshotId: null,
 		initialPrompt,
+		visibility: "private",
 		...(initialPrompt ? { titleStatus: "generating" } : {}),
 		agentConfig: {
 			modelId: agentConfig.modelId,
@@ -354,6 +359,11 @@ async function createScratchSession(input: {
 	});
 
 	reqLog.info("Scratch session record created");
+
+	// K5: Record session_created lifecycle event (best-effort)
+	createSessionEvent({ sessionId, eventType: "session_created" }).catch((err) => {
+		reqLog.warn({ err }, "Failed to record session_created event");
+	});
 
 	// Enqueue async title generation (fire-and-forget)
 	if (initialPrompt) {
@@ -428,6 +438,10 @@ async function createConfigurationSession(input: {
 	const doUrl = `${gatewayUrl}/session/${sessionId}`;
 	reqLog.info("Session creation started");
 
+	// K2: Visibility defaults by kind/origin — setup sessions are org-visible, ad-hoc tasks are private
+	const visibility: "private" | "org" = sessionType === "setup" ? "org" : "private";
+	const kind: "task" | "setup" = sessionType === "setup" ? "setup" : "task";
+
 	// Create session record and return immediately.
 	// Sandbox provisioning is handled by the gateway when the client connects.
 	await createSessionWithAdmission(orgId, {
@@ -440,6 +454,8 @@ async function createConfigurationSession(input: {
 		sandboxProvider: provider.type,
 		snapshotId,
 		initialPrompt,
+		visibility,
+		kind,
 		...(initialPrompt ? { titleStatus: "generating" } : {}),
 		agentConfig: {
 			modelId: agentConfig.modelId,
@@ -448,6 +464,11 @@ async function createConfigurationSession(input: {
 	});
 
 	reqLog.info("Session record created, returning immediately");
+
+	// K5: Record session_created lifecycle event (best-effort)
+	createSessionEvent({ sessionId, eventType: "session_created" }).catch((err) => {
+		reqLog.warn({ err }, "Failed to record session_created event");
+	});
 
 	// Enqueue async title generation (fire-and-forget)
 	if (initialPrompt) {

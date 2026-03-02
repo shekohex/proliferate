@@ -6,6 +6,20 @@ export * from "./service";
 export * from "./mapper";
 export * from "./sandbox-env";
 export * from "./generate-title";
+// K-phase DB helpers (lifecycle, ACL) — defined in v1-db.ts
+// Note: archiveSession/unarchiveSession/softDeleteSession are NOT re-exported from v1-db
+// because v1-service.ts defines service-layer wrappers with the same names (object args + org check).
+export {
+	type CreateSessionEventInput,
+	updateLastVisibleUpdateAt,
+	updateOperatorStatus,
+	createSessionEvent,
+	listSessionEvents,
+	getSessionAclRole,
+	grantSessionAcl,
+	updateSessionVisibility,
+} from "./v1-db";
+
 export * from "./v1-service";
 
 // DB row types (from Drizzle schema)

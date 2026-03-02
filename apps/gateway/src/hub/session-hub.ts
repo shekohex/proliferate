@@ -43,6 +43,12 @@ import { buildControlPlaneSnapshot, buildInitConfig } from "./control-plane";
 import { EventProcessor } from "./event-processor";
 import { GitOperations } from "./git-operations";
 import { MigrationController } from "./migration-controller";
+import {
+	persistTerminalOutcome,
+	projectOperatorStatus,
+	recordLifecycleEvent,
+	touchLastVisibleUpdate,
+} from "./session-lifecycle";
 import { MigrationInProgressError, SessionRuntime } from "./session-runtime";
 import { SessionTelemetry, extractPrUrls } from "./session-telemetry";
 import { prepareForSnapshot } from "./snapshot-scrub";
@@ -138,7 +144,11 @@ export class SessionHub {
 				broadcast: (msg) => this.broadcast(msg),
 				getOpenCodeSessionId: () => this.runtime.getOpenCodeSessionId(),
 				onToolStart: (toolCallId) => this.telemetry.recordToolCall(toolCallId),
-				onMessageComplete: () => this.telemetry.recordMessageComplete(),
+				onMessageComplete: () => {
+					this.telemetry.recordMessageComplete();
+					// K3: Update lastVisibleUpdateAt on new assistant output
+					touchLastVisibleUpdate(this.sessionId, this.logger);
+				},
 				onTextPartComplete: (text) => {
 					for (const url of extractPrUrls(text)) {
 						this.telemetry.recordPrUrl(url);
@@ -686,6 +696,19 @@ export class SessionHub {
 		this.telemetry.startRunning(); // idempotent: only sets if not already running
 		this.startMigrationMonitor();
 		await setRuntimeLease(this.sessionId);
+
+		// K5: Record session started event
+		const orgId = this.runtime.getContext().session.organization_id;
+		recordLifecycleEvent(this.sessionId, "session_started", this.logger);
+
+		// K4: Project operator status to "active"
+		projectOperatorStatus({
+			sessionId: this.sessionId,
+			organizationId: orgId,
+			runtimeStatus: "running",
+			hasPendingApproval: false,
+			logger: this.logger,
+		});
 	}
 
 	/**
@@ -1064,12 +1087,32 @@ export class SessionHub {
 		}
 
 		// Enqueue session completion notifications (best-effort)
+		const orgId = context.session.organization_id;
 		try {
-			const orgId = context.session.organization_id;
 			await notifications.enqueueSessionCompletionNotification(orgId, this.sessionId);
 		} catch (err) {
 			this.logError("Failed to enqueue session completion notification", err);
 		}
+
+		// K1: Persist structured terminal outcome
+		await persistTerminalOutcome({
+			sessionId: this.sessionId,
+			organizationId: orgId,
+			runtimeStatus: "completed",
+			logger: this.logger,
+		});
+
+		// K3: Final visible update timestamp
+		await touchLastVisibleUpdate(this.sessionId, this.logger);
+
+		// K4: Project terminal operator status
+		await projectOperatorStatus({
+			sessionId: this.sessionId,
+			organizationId: orgId,
+			runtimeStatus: "completed",
+			hasPendingApproval: false,
+			logger: this.logger,
+		});
 
 		this.runtime.disconnectSse();
 		this.runtime.resetSandboxState();
@@ -1105,7 +1148,21 @@ export class SessionHub {
 		}
 
 		this.touchActivity();
+		const wasIdle = this.lastKnownAgentIdleAt !== null;
 		this.lastKnownAgentIdleAt = null; // new work starting, invalidates previous idle state
+
+		// K4: Project active when transitioning from idle to working
+		if (wasIdle) {
+			const orgId = this.runtime.getContext().session.organization_id;
+			void projectOperatorStatus({
+				sessionId: this.sessionId,
+				organizationId: orgId,
+				runtimeStatus: "running",
+				hasPendingApproval: false,
+				isAgentIdle: false,
+				logger: this.logger,
+			});
+		}
 
 		this.log("Handling prompt", {
 			userId,
@@ -1368,6 +1425,8 @@ export class SessionHub {
 				(rawEvent.properties as { status?: { type?: string } } | undefined)?.status?.type ===
 					"idle");
 
+		const becameIdle = (wasBusy && nowIdle) || reportedIdle;
+
 		if (wasBusy && nowIdle) {
 			this.touchActivity(); // marks agent-done boundary, starts grace period
 			this.lastKnownAgentIdleAt = Date.now();
@@ -1376,6 +1435,19 @@ export class SessionHub {
 			// Text-only completions can retain assistant message id for de-dup; treat explicit idle as done.
 			this.touchActivity();
 			this.lastKnownAgentIdleAt = Date.now();
+		}
+
+		// K4: Project needs_input when agent becomes idle
+		if (becameIdle) {
+			const orgId = this.runtime.getContext().session.organization_id;
+			void projectOperatorStatus({
+				sessionId: this.sessionId,
+				organizationId: orgId,
+				runtimeStatus: "running",
+				hasPendingApproval: false,
+				isAgentIdle: true,
+				logger: this.logger,
+			});
 		}
 	}
 
@@ -1557,6 +1629,60 @@ export class SessionHub {
 			type: "status",
 			payload: { status, ...(message ? { message } : {}) },
 		});
+
+		// K3/K4/K5: Fire lifecycle side-effects on status transitions (best-effort, non-blocking)
+		this.handleStatusLifecycle(status);
+	}
+
+	/**
+	 * Fire best-effort lifecycle side-effects when broadcast status changes.
+	 * K3: lastVisibleUpdateAt, K4: operator status, K5: session events.
+	 */
+	private handleStatusLifecycle(
+		status: "creating" | "resuming" | "running" | "paused" | "stopped" | "error" | "migrating",
+	): void {
+		const orgId = this.runtime.getContext().session.organization_id;
+
+		if (status === "paused") {
+			// K5: Record session paused event
+			recordLifecycleEvent(this.sessionId, "session_paused", this.logger);
+			// K3: Touch visible update on pause
+			touchLastVisibleUpdate(this.sessionId, this.logger);
+		} else if (status === "stopped") {
+			// K3: Touch visible update on terminal state
+			touchLastVisibleUpdate(this.sessionId, this.logger);
+			// K4: Project terminal operator status (ready_for_review)
+			projectOperatorStatus({
+				sessionId: this.sessionId,
+				organizationId: orgId,
+				runtimeStatus: "completed",
+				hasPendingApproval: false,
+				logger: this.logger,
+			});
+			// K5: Record terminal event
+			recordLifecycleEvent(this.sessionId, "session_completed", this.logger);
+		} else if (status === "error") {
+			// K3: Touch visible update on error
+			touchLastVisibleUpdate(this.sessionId, this.logger);
+			// K4: Project errored operator status
+			projectOperatorStatus({
+				sessionId: this.sessionId,
+				organizationId: orgId,
+				runtimeStatus: "failed",
+				hasPendingApproval: false,
+				logger: this.logger,
+			});
+			// K5: Record failure event
+			recordLifecycleEvent(this.sessionId, "session_failed", this.logger);
+		} else if (status === "running") {
+			// K3: Touch visible update when session starts running
+			touchLastVisibleUpdate(this.sessionId, this.logger);
+		} else if (status === "resuming") {
+			// K5: Record session resumed event
+			recordLifecycleEvent(this.sessionId, "session_resumed", this.logger);
+			// K3: Touch visible update on resume
+			touchLastVisibleUpdate(this.sessionId, this.logger);
+		}
 	}
 
 	private sendStatus(
