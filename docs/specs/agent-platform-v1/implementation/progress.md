@@ -192,3 +192,29 @@
 - carry-over TODOs:
   - Complete reconnect/resubscribe contract coverage from workspace client perspective.
   - Resolve CI/human/Greptile review feedback after full stack implementation.
+
+## PR 7
+- branch name: `v1/07-ui-navigation`
+- PR URL/number: `https://github.com/proliferate-ai/proliferate/pull/257`
+- scope: Phase 7 UI/navigation alignment (canonical route surfaces, sidebar IA reduction, coworker route terminology, task-first session list filtering via `kind`)
+- check results:
+  - `pnpm typecheck` ✅
+  - `pnpm lint` ✅
+  - `pnpm -C apps/web test` ✅ (unit-test subset available for touched web app surface)
+- open comments:
+  - Critique 7 processed; no additional code changes required after rebasing and explicit no-backward-compatibility migration directive.
+- fixes applied:
+  - Replaced canonical route re-export placeholders with real page ownership by moving implementations to `/sessions`, `/coworkers`, `/coworkers/[id]`, and `/coworkers/[id]/events`.
+  - Converted legacy `/dashboard/sessions` and `/dashboard/automations/*` pages into explicit redirects to canonical V1 routes.
+  - Restored Home and New Session flows to the composer entry by routing sidebar/command-palette/new-session actions to `/dashboard` instead of `/sessions`.
+  - Updated `app/page.tsx` redirect target from `/sessions` to `/dashboard` so Home no longer loops into task list.
+  - Added Settings navigation entry for `Repositories` and kept route discoverable at `/settings/repositories`.
+  - Moved repositories page implementation to canonical `/settings/repositories`; legacy `/dashboard/repos` now redirects forward.
+  - Fixed Needs Attention fallback link for runs without `session_id` to route into coworker events (`/coworkers/[id]/events?runId=...`) instead of task sessions.
+  - Updated Sessions nav iconography from `User` to `SquareTerminal` for IA semantics.
+  - Added missing `kinds` query field to shared `sessionsContract.list` schema to keep router/shared contract parity.
+  - Explicitly kept `sessions.kind IS NULL` compatibility fallback out of scope per migration directive (no backward compatibility required for legacy architecture/users).
+- merge SHA: `TBD`
+- carry-over TODOs:
+  - Complete coworker detail activity/timeline parity with final V1 `worker_run_events` model.
+  - Resolve CI/human/Greptile follow-ups after rerun.

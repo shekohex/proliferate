@@ -3,23 +3,16 @@
 import { openIntercomMessenger } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-	AutomationsIcon,
-	RunsIcon,
-	SidebarCollapseIcon,
-	SidebarExpandIcon,
-} from "@/components/ui/icons";
+import { AutomationsIcon, SidebarCollapseIcon, SidebarExpandIcon } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Text } from "@/components/ui/text";
-import { useAttentionInbox } from "@/hooks/use-attention-inbox";
 import { useSignOut } from "@/hooks/use-sign-out";
 import { useSession } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
 import { useDashboardStore } from "@/stores/dashboard";
 import { env } from "@proliferate/environment/public";
 import {
-	Activity,
 	ArrowLeft,
 	Building2,
 	CreditCard,
@@ -32,6 +25,7 @@ import {
 	Moon,
 	Plug,
 	Settings,
+	SquareTerminal,
 	Sun,
 	User,
 	Users,
@@ -91,16 +85,13 @@ export function Sidebar() {
 	const router = useRouter();
 
 	const isSettingsPage = pathname?.startsWith("/settings");
-	const isHomePage = pathname === "/dashboard";
-	const isMyWorkPage = pathname?.startsWith("/dashboard/my-work");
-	const isInboxPage = pathname?.startsWith("/dashboard/inbox");
-	const isActivityPage = pathname?.startsWith("/dashboard/activity");
-	const isIntegrationsPage = pathname?.startsWith("/dashboard/integrations");
-	const isAutomationsPage = pathname?.startsWith("/dashboard/automations");
-	const isConfigurationsPage = pathname?.startsWith("/dashboard/configurations");
-
-	const inboxItems = useAttentionInbox({ wsApprovals: [] });
-	const inboxCount = inboxItems.length;
+	const isHomePage = pathname === "/" || pathname === "/dashboard";
+	const isSessionsPage =
+		pathname?.startsWith("/sessions") || pathname?.startsWith("/dashboard/sessions");
+	const isCoworkersPage =
+		pathname?.startsWith("/coworkers") || pathname?.startsWith("/dashboard/automations");
+	const isIntegrationsPage =
+		pathname?.startsWith("/integrations") || pathname?.startsWith("/dashboard/integrations");
 
 	return (
 		<aside
@@ -138,9 +129,9 @@ export function Sidebar() {
 					onClick={(e) => {
 						e.stopPropagation();
 						setActiveSession(null);
-						router.push("/dashboard");
+						router.push("/sessions");
 					}}
-					title="New chat"
+					title="Sessions"
 				>
 					<img
 						src="https://d1uh4o7rpdqkkl.cloudfront.net/logo.webp"
@@ -161,70 +152,28 @@ export function Sidebar() {
 					<Home className="h-4 w-4" />
 				</Button>
 				<Button
-					variant={isMyWorkPage ? "secondary" : "ghost"}
+					variant={isSessionsPage ? "secondary" : "ghost"}
 					size="icon"
 					className="h-8 w-8 text-muted-foreground hover:text-foreground"
 					onClick={(e) => {
 						e.stopPropagation();
-						router.push("/dashboard/my-work");
+						router.push("/sessions");
 					}}
-					title="My Work"
+					title="Sessions"
 				>
-					<User className="h-4 w-4" />
+					<SquareTerminal className="h-4 w-4" />
 				</Button>
 				<Button
-					variant={isInboxPage ? "secondary" : "ghost"}
-					size="icon"
-					className="h-8 w-8 text-muted-foreground hover:text-foreground relative"
-					onClick={(e) => {
-						e.stopPropagation();
-						router.push("/dashboard/inbox");
-					}}
-					title="Inbox"
-				>
-					<RunsIcon className="h-4 w-4" />
-					{inboxCount > 0 && (
-						<span className="absolute -top-0.5 -right-0.5 h-3.5 min-w-3.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-medium flex items-center justify-center px-1">
-							{inboxCount > 9 ? "9+" : inboxCount}
-						</span>
-					)}
-				</Button>
-				<Button
-					variant={isActivityPage ? "secondary" : "ghost"}
+					variant={isCoworkersPage ? "secondary" : "ghost"}
 					size="icon"
 					className="h-8 w-8 text-muted-foreground hover:text-foreground"
 					onClick={(e) => {
 						e.stopPropagation();
-						router.push("/dashboard/activity");
+						router.push("/coworkers");
 					}}
-					title="Activity"
-				>
-					<Activity className="h-4 w-4" />
-				</Button>
-				<div className="my-1" />
-				<Button
-					variant={isAutomationsPage ? "secondary" : "ghost"}
-					size="icon"
-					className="h-8 w-8 text-muted-foreground hover:text-foreground"
-					onClick={(e) => {
-						e.stopPropagation();
-						router.push("/dashboard/automations");
-					}}
-					title="Automations"
+					title="Coworkers"
 				>
 					<AutomationsIcon className="h-4 w-4" />
-				</Button>
-				<Button
-					variant={isConfigurationsPage ? "secondary" : "ghost"}
-					size="icon"
-					className="h-8 w-8 text-muted-foreground hover:text-foreground"
-					onClick={(e) => {
-						e.stopPropagation();
-						router.push("/dashboard/configurations");
-					}}
-					title="Configurations"
-				>
-					<FolderGit2 className="h-4 w-4" />
 				</Button>
 				<Button
 					variant={isIntegrationsPage ? "secondary" : "ghost"}
@@ -232,7 +181,7 @@ export function Sidebar() {
 					className="h-8 w-8 text-muted-foreground hover:text-foreground"
 					onClick={(e) => {
 						e.stopPropagation();
-						router.push("/dashboard/integrations");
+						router.push("/integrations");
 					}}
 					title="Integrations"
 				>
@@ -465,18 +414,14 @@ function DashboardNav({ onNavigate }: { onNavigate?: () => void }) {
 	const pathname = usePathname();
 	const router = useRouter();
 
-	const isHomePage = pathname === "/dashboard";
-	const isMyWorkPage = pathname?.startsWith("/dashboard/my-work");
-	const isInboxPage = pathname?.startsWith("/dashboard/inbox");
-	const isActivityPage = pathname?.startsWith("/dashboard/activity");
-	const isAutomationsPage = pathname?.startsWith("/dashboard/automations");
-	const isIntegrationsPage = pathname?.startsWith("/dashboard/integrations");
-	const isConfigurationsPage = pathname?.startsWith("/dashboard/configurations");
+	const isHomePage = pathname === "/" || pathname === "/dashboard";
+	const isSessionsPage =
+		pathname?.startsWith("/sessions") || pathname?.startsWith("/dashboard/sessions");
+	const isCoworkersPage =
+		pathname?.startsWith("/coworkers") || pathname?.startsWith("/dashboard/automations");
+	const isIntegrationsPage =
+		pathname?.startsWith("/integrations") || pathname?.startsWith("/dashboard/integrations");
 	const isSettingsPage = pathname?.startsWith("/settings");
-
-	// Inbox badge: runs are already filtered to unassigned at the DB level
-	const inboxItems = useAttentionInbox({ wsApprovals: [] });
-	const inboxCount = inboxItems.length;
 
 	const handleNavigate = (path: string) => {
 		router.push(path);
@@ -493,57 +438,24 @@ function DashboardNav({ onNavigate }: { onNavigate?: () => void }) {
 					active={!!isHomePage}
 					onClick={() => handleNavigate("/dashboard")}
 				/>
-			</div>
-
-			{/* Work */}
-			<div className="flex flex-col gap-1">
-				<SectionLabel>Work</SectionLabel>
 				<NavItem
-					icon={User}
-					label="My Work"
-					active={!!isMyWorkPage}
-					onClick={() => handleNavigate("/dashboard/my-work")}
+					icon={SquareTerminal}
+					label="Sessions"
+					active={!!isSessionsPage}
+					onClick={() => handleNavigate("/sessions")}
 				/>
-				<NavItem
-					icon={RunsIcon}
-					label="Inbox"
-					active={!!isInboxPage}
-					badge={inboxCount}
-					onClick={() => handleNavigate("/dashboard/inbox")}
-				/>
-				<NavItem
-					icon={Activity}
-					label="Activity"
-					active={!!isActivityPage}
-					onClick={() => handleNavigate("/dashboard/activity")}
-				/>
-			</div>
-
-			{/* Configure */}
-			<div className="flex flex-col gap-1">
-				<SectionLabel>Configure</SectionLabel>
 				<NavItem
 					icon={AutomationsIcon}
-					label="Automations"
-					active={!!isAutomationsPage}
-					onClick={() => handleNavigate("/dashboard/automations")}
-				/>
-				<NavItem
-					icon={FolderGit2}
-					label="Configurations"
-					active={!!isConfigurationsPage}
-					onClick={() => handleNavigate("/dashboard/configurations")}
+					label="Coworkers"
+					active={!!isCoworkersPage}
+					onClick={() => handleNavigate("/coworkers")}
 				/>
 				<NavItem
 					icon={Plug}
 					label="Integrations"
 					active={!!isIntegrationsPage}
-					onClick={() => handleNavigate("/dashboard/integrations")}
+					onClick={() => handleNavigate("/integrations")}
 				/>
-			</div>
-
-			{/* Settings */}
-			<div className="flex flex-col gap-1">
 				<NavItem
 					icon={Settings}
 					label="Settings"
@@ -565,6 +477,7 @@ function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
 	const isProfilePage = pathname === "/settings/profile";
 	const isGeneralPage = pathname === "/settings/general";
 	const isMembersPage = pathname === "/settings/members";
+	const isRepositoriesPage = pathname === "/settings/repositories";
 	const isSecretsPage = pathname === "/settings/secrets";
 	const isBillingPage = pathname === "/settings/billing";
 
@@ -581,7 +494,7 @@ function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
 					icon={ArrowLeft}
 					label="Back"
 					active={false}
-					onClick={() => handleNavigate("/dashboard")}
+					onClick={() => handleNavigate("/sessions")}
 				/>
 			</div>
 
@@ -610,6 +523,12 @@ function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
 					label="Members"
 					active={!!isMembersPage}
 					onClick={() => handleNavigate("/settings/members")}
+				/>
+				<NavItem
+					icon={FolderGit2}
+					label="Repositories"
+					active={!!isRepositoriesPage}
+					onClick={() => handleNavigate("/settings/repositories")}
 				/>
 				<NavItem
 					icon={Key}

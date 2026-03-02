@@ -89,8 +89,8 @@ function NeedsAttention() {
 			<SectionHeader
 				title="Needs Attention"
 				subtitle="Agent runs requiring your input"
-				actionLabel="Inbox"
-				actionHref="/dashboard/inbox"
+				actionLabel="Sessions"
+				actionHref="/sessions"
 			/>
 			<div className="rounded-xl border border-border overflow-hidden">
 				{pendingRuns.map((run) => {
@@ -102,7 +102,11 @@ function NeedsAttention() {
 						<Link
 							key={run.id}
 							href={
-								run.session_id ? `/workspace/${run.session_id}` : `/dashboard/inbox?id=${run.id}`
+								run.session_id
+									? `/workspace/${run.session_id}`
+									: run.automation_id
+										? `/coworkers/${run.automation_id}/events?runId=${run.id}`
+										: "/coworkers"
 							}
 							className="group flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors text-sm border-b border-border/50 last:border-0"
 						>
@@ -143,6 +147,7 @@ function NeedsAttention() {
 
 function RecentActivity() {
 	const { data: sessions, isLoading } = useSessions({
+		kinds: ["task"],
 		limit: 5,
 		excludeSetup: true,
 		excludeCli: true,
@@ -157,7 +162,7 @@ function RecentActivity() {
 				title="Recent Activity"
 				subtitle="Pick up where you left off"
 				actionLabel="All Sessions"
-				actionHref="/dashboard/sessions"
+				actionHref="/sessions"
 			/>
 			<div className="rounded-lg border border-border bg-card overflow-hidden">
 				{sessions.map((session) => (
@@ -180,6 +185,7 @@ export function EmptyDashboard() {
 	const createConfiguration = useCreateConfiguration();
 	const createSession = useCreateSession();
 	const { data: recentSessions } = useSessions({
+		kinds: ["task"],
 		limit: 1,
 		excludeSetup: true,
 		excludeCli: true,
