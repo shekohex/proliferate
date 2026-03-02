@@ -16,6 +16,7 @@ import {
 	desc,
 	eq,
 	getDb,
+	inArray,
 	isNotNull,
 	isNull,
 	lt,
@@ -1205,24 +1206,98 @@ export interface EnqueueSessionMessageInput {
 	senderSessionId?: string;
 }
 
+export interface FindTerminalFollowupMessageByDedupeInput {
+	organizationId: string;
+	sourceSessionId: string;
+	dedupeKey: string;
+	mode: "continuation" | "rerun";
+}
+
+export async function findTerminalFollowupMessageByDedupe(
+	input: FindTerminalFollowupMessageByDedupeInput,
+): Promise<{ deliverySessionId: string; sessionMessage: SessionMessageRow } | undefined> {
+	const db = getDb();
+	const lineageFilter =
+		input.mode === "continuation"
+			? eq(sessions.continuedFromSessionId, input.sourceSessionId)
+			: eq(sessions.rerunOfSessionId, input.sourceSessionId);
+
+	const [row] = await db
+		.select({
+			deliverySessionId: sessions.id,
+			sessionMessage: sessionMessages,
+		})
+		.from(sessionMessages)
+		.innerJoin(sessions, eq(sessionMessages.sessionId, sessions.id))
+		.where(
+			and(
+				eq(sessions.organizationId, input.organizationId),
+				eq(sessionMessages.dedupeKey, input.dedupeKey),
+				eq(sessionMessages.direction, "user_to_task"),
+				lineageFilter,
+			),
+		)
+		.orderBy(asc(sessionMessages.queuedAt), asc(sessionMessages.id))
+		.limit(1);
+
+	if (!row) {
+		return undefined;
+	}
+
+	return row;
+}
+
 export async function enqueueSessionMessage(
 	input: EnqueueSessionMessageInput,
 ): Promise<SessionMessageRow> {
 	const db = getDb();
-	const [row] = await db
-		.insert(sessionMessages)
-		.values({
-			sessionId: input.sessionId,
-			direction: input.direction,
-			messageType: input.messageType,
-			payloadJson: input.payloadJson,
-			dedupeKey: input.dedupeKey ?? null,
-			deliverAfter: input.deliverAfter ?? null,
-			senderUserId: input.senderUserId ?? null,
-			senderSessionId: input.senderSessionId ?? null,
-		})
-		.returning();
-	return row;
+	const values = {
+		sessionId: input.sessionId,
+		direction: input.direction,
+		messageType: input.messageType,
+		payloadJson: input.payloadJson,
+		dedupeKey: input.dedupeKey ?? null,
+		deliverAfter: input.deliverAfter ?? null,
+		senderUserId: input.senderUserId ?? null,
+		senderSessionId: input.senderSessionId ?? null,
+	};
+
+	const rows = input.dedupeKey
+		? await db
+				.insert(sessionMessages)
+				.values(values)
+				.onConflictDoNothing({
+					target: [sessionMessages.sessionId, sessionMessages.dedupeKey],
+					where: isNotNull(sessionMessages.dedupeKey),
+				})
+				.returning()
+		: await db.insert(sessionMessages).values(values).returning();
+
+	const inserted = rows[0];
+	if (inserted) {
+		return inserted;
+	}
+
+	if (!input.dedupeKey) {
+		throw new Error("Failed to enqueue session message");
+	}
+
+	const [existing] = await db
+		.select()
+		.from(sessionMessages)
+		.where(
+			and(
+				eq(sessionMessages.sessionId, input.sessionId),
+				eq(sessionMessages.dedupeKey, input.dedupeKey),
+			),
+		)
+		.limit(1);
+
+	if (!existing) {
+		throw new Error("Failed to resolve deduped session message");
+	}
+
+	return existing;
 }
 
 export async function listQueuedSessionMessages(sessionId: string): Promise<SessionMessageRow[]> {
@@ -1306,7 +1381,11 @@ export interface PersistSessionOutcomeInput {
 	outcomeVersion?: number;
 }
 
-export async function persistSessionOutcome(input: PersistSessionOutcomeInput): Promise<void> {
+export async function persistSessionOutcome(input: PersistSessionOutcomeInput): Promise<{
+	outcomeJson: unknown;
+	outcomeVersion: number | null;
+	outcomePersistedAt: Date | null;
+}> {
 	const db = getDb();
 	const now = new Date();
 	const [row] = await db
@@ -1317,8 +1396,223 @@ export async function persistSessionOutcome(input: PersistSessionOutcomeInput): 
 			outcomePersistedAt: now,
 		})
 		.where(eq(sessions.id, input.sessionId))
-		.returning({ id: sessions.id });
+		.returning({
+			outcomeJson: sessions.outcomeJson,
+			outcomeVersion: sessions.outcomeVersion,
+			outcomePersistedAt: sessions.outcomePersistedAt,
+		});
 	if (!row) {
 		throw new Error(`Session not found for outcome persistence: ${input.sessionId}`);
 	}
+	return row;
+}
+
+export async function findSessionById(
+	sessionId: string,
+	organizationId: string,
+): Promise<SessionRow | undefined> {
+	const db = getDb();
+	const [row] = await db
+		.select()
+		.from(sessions)
+		.where(and(eq(sessions.id, sessionId), eq(sessions.organizationId, organizationId)))
+		.limit(1);
+	return row;
+}
+
+export async function findLatestTerminalFollowupSession(input: {
+	organizationId: string;
+	sourceSessionId: string;
+	mode: "continuation" | "rerun";
+}): Promise<SessionRow | undefined> {
+	const db = getDb();
+	return db.query.sessions.findFirst({
+		where: and(
+			eq(sessions.organizationId, input.organizationId),
+			eq(sessions.kind, "task"),
+			isNull(sessions.workerId),
+			isNull(sessions.workerRunId),
+			input.mode === "continuation"
+				? eq(sessions.continuedFromSessionId, input.sourceSessionId)
+				: eq(sessions.rerunOfSessionId, input.sourceSessionId),
+		),
+		orderBy: (table, { desc: d }) => [d(table.startedAt), d(table.id)],
+	});
+}
+
+export async function getSessionOutcome(sessionId: string): Promise<{
+	outcomeJson: unknown;
+	outcomeVersion: number | null;
+	outcomePersistedAt: Date | null;
+} | null> {
+	const db = getDb();
+	const [row] = await db
+		.select({
+			outcomeJson: sessions.outcomeJson,
+			outcomeVersion: sessions.outcomeVersion,
+			outcomePersistedAt: sessions.outcomePersistedAt,
+		})
+		.from(sessions)
+		.where(eq(sessions.id, sessionId))
+		.limit(1);
+
+	if (!row) {
+		return null;
+	}
+
+	return row;
+}
+
+export async function listDeliverableSessionMessages(
+	sessionId: string,
+	now = new Date(),
+): Promise<SessionMessageRow[]> {
+	const db = getDb();
+	return db
+		.select()
+		.from(sessionMessages)
+		.where(
+			and(
+				eq(sessionMessages.sessionId, sessionId),
+				eq(sessionMessages.deliveryState, "queued"),
+				or(isNull(sessionMessages.deliverAfter), lte(sessionMessages.deliverAfter, now)),
+			),
+		)
+		.orderBy(asc(sessionMessages.queuedAt), asc(sessionMessages.id));
+}
+
+/**
+ * Atomically claims queued + deliverable messages for delivery.
+ *
+ * Delivery order is deterministic: queuedAt ASC, id ASC.
+ */
+export async function claimDeliverableSessionMessages(
+	sessionId: string,
+	limit = 50,
+): Promise<SessionMessageRow[]> {
+	const db = getDb();
+	return db.transaction(async (tx) => {
+		const selectedRows = await tx
+			.select({
+				id: sessionMessages.id,
+			})
+			.from(sessionMessages)
+			.where(
+				and(
+					eq(sessionMessages.sessionId, sessionId),
+					eq(sessionMessages.deliveryState, "queued"),
+					or(isNull(sessionMessages.deliverAfter), lte(sessionMessages.deliverAfter, new Date())),
+				),
+			)
+			.orderBy(asc(sessionMessages.queuedAt), asc(sessionMessages.id))
+			.limit(limit)
+			.for("update", { skipLocked: true });
+
+		if (selectedRows.length === 0) {
+			return [];
+		}
+
+		const selectedIds = selectedRows.map((row) => row.id);
+		const orderById = new Map<string, number>(selectedIds.map((id, index) => [id, index]));
+
+		const updatedRows = await tx
+			.update(sessionMessages)
+			.set({
+				deliveryState: "delivered",
+				deliveredAt: new Date(),
+			})
+			.where(inArray(sessionMessages.id, selectedIds))
+			.returning();
+
+		updatedRows.sort((a, b) => (orderById.get(a.id) ?? 0) - (orderById.get(b.id) ?? 0));
+		return updatedRows;
+	});
+}
+
+export async function transitionSessionMessageDeliveryState(input: {
+	id: string;
+	fromStates: SessionMessageDeliveryState[];
+	toState: SessionMessageDeliveryState;
+	fields?: {
+		deliveredAt?: Date | null;
+		consumedAt?: Date | null;
+		failedAt?: Date | null;
+		failureReason?: string | null;
+	};
+}): Promise<SessionMessageRow | undefined> {
+	if (input.fromStates.length === 0) {
+		throw new Error("fromStates must include at least one state");
+	}
+
+	const db = getDb();
+	const [row] = await db
+		.update(sessionMessages)
+		.set({
+			deliveryState: input.toState,
+			deliveredAt: input.fields?.deliveredAt,
+			consumedAt: input.fields?.consumedAt,
+			failedAt: input.fields?.failedAt,
+			failureReason: input.fields?.failureReason,
+		})
+		.where(
+			and(
+				eq(sessionMessages.id, input.id),
+				inArray(sessionMessages.deliveryState, input.fromStates),
+			),
+		)
+		.returning();
+	return row;
+}
+
+export interface CreateTaskSessionInput {
+	id?: string;
+	organizationId: string;
+	createdBy: string;
+	repoId: string;
+	repoBaselineId: string;
+	repoBaselineTargetId: string;
+	workerId?: string | null;
+	workerRunId?: string | null;
+	parentSessionId?: string | null;
+	continuedFromSessionId?: string | null;
+	rerunOfSessionId?: string | null;
+	configurationId?: string | null;
+	visibility?: "private" | "shared" | "org";
+	initialPrompt?: string | null;
+	title?: string | null;
+}
+
+export async function createTaskSession(input: CreateTaskSessionInput): Promise<SessionRow> {
+	if (!input.repoId || !input.repoBaselineId || !input.repoBaselineTargetId) {
+		throw new Error("Task session requires repo + baseline + baseline target linkage");
+	}
+
+	const db = getDb();
+	const [row] = await db
+		.insert(sessions)
+		.values({
+			id: input.id,
+			organizationId: input.organizationId,
+			createdBy: input.createdBy,
+			sessionType: "coding",
+			kind: "task",
+			status: "starting",
+			runtimeStatus: "starting",
+			operatorStatus: "active",
+			visibility: input.visibility ?? "private",
+			repoId: input.repoId,
+			repoBaselineId: input.repoBaselineId,
+			repoBaselineTargetId: input.repoBaselineTargetId,
+			workerId: input.workerId ?? null,
+			workerRunId: input.workerRunId ?? null,
+			parentSessionId: input.parentSessionId ?? null,
+			continuedFromSessionId: input.continuedFromSessionId ?? null,
+			rerunOfSessionId: input.rerunOfSessionId ?? null,
+			configurationId: input.configurationId ?? null,
+			initialPrompt: input.initialPrompt ?? null,
+			title: input.title ?? null,
+		})
+		.returning();
+
+	return row;
 }
