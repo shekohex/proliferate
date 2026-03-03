@@ -45,6 +45,8 @@ import type {
 // Types
 // ============================================
 
+export type DbTransaction = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+
 /** Session row type from Drizzle schema */
 export type SessionRow = InferSelectModel<typeof sessions>;
 
@@ -1621,6 +1623,29 @@ export async function listChildSessionsByRun(
 		.orderBy(asc(sessions.startedAt));
 }
 
+/**
+ * List ALL child sessions for a manager, across all runs.
+ * Used by the manager harness list_children tool so it can see and interact
+ * with children from previous runs that are still running.
+ */
+export async function listAllChildSessions(
+	parentSessionId: string,
+	organizationId: string,
+): Promise<SessionRow[]> {
+	const db = getDb();
+	return db
+		.select()
+		.from(sessions)
+		.where(
+			and(
+				eq(sessions.parentSessionId, parentSessionId),
+				eq(sessions.organizationId, organizationId),
+				eq(sessions.kind, "task"),
+			),
+		)
+		.orderBy(desc(sessions.startedAt));
+}
+
 export async function findLatestTerminalFollowupSession(input: {
 	organizationId: string;
 	sourceSessionId: string;
@@ -1765,13 +1790,112 @@ export async function transitionSessionMessageDeliveryState(input: {
 	return row;
 }
 
+// ============================================
+// Manager Session Creation
+// ============================================
+
+export interface CreateManagerSessionInput {
+	organizationId: string;
+	createdBy: string;
+	repoId?: string | null;
+	repoBaselineId?: string | null;
+	repoBaselineTargetId?: string | null;
+	configurationId?: string | null;
+	visibility?: "private" | "shared" | "org";
+	title?: string | null;
+}
+
+/**
+ * Create a placeholder session for a new manager.
+ *
+ * Inserts with kind=NULL to avoid the `sessions_manager_shape_check` constraint
+ * (which requires worker_id IS NOT NULL for manager sessions). The caller must
+ * call `promoteToManagerSession()` after the worker row exists.
+ */
+export async function createManagerSessionPlaceholder(
+	input: CreateManagerSessionInput,
+	tx?: DbTransaction,
+): Promise<SessionRow> {
+	const db = tx ?? getDb();
+	const [row] = await db
+		.insert(sessions)
+		.values({
+			organizationId: input.organizationId,
+			createdBy: input.createdBy,
+			sessionType: "coding",
+			kind: null,
+			status: "starting",
+			runtimeStatus: "starting",
+			operatorStatus: "active",
+			visibility: input.visibility ?? "org",
+			repoId: input.repoId ?? null,
+			repoBaselineId: input.repoBaselineId ?? null,
+			repoBaselineTargetId: input.repoBaselineTargetId ?? null,
+			configurationId: input.configurationId ?? null,
+			title: input.title ?? null,
+		})
+		.returning();
+
+	return row;
+}
+
+/**
+ * Promote a placeholder session to kind='manager' and link it to a worker.
+ *
+ * Must be called after the worker row is created so the FK and check constraint are satisfied.
+ */
+export async function promoteToManagerSession(
+	sessionId: string,
+	workerId: string,
+	tx?: DbTransaction,
+): Promise<SessionRow> {
+	const db = tx ?? getDb();
+	const [row] = await db
+		.update(sessions)
+		.set({ kind: "manager", workerId })
+		.where(eq(sessions.id, sessionId))
+		.returning();
+
+	if (!row) {
+		throw new Error(`Session ${sessionId} not found during promotion to manager`);
+	}
+
+	return row;
+}
+
+/**
+ * Update a manager session's repo/configuration linkage.
+ *
+ * Used when a worker's repo is changed via the settings UI — propagates
+ * the change to the manager session so child tasks inherit the correct repo.
+ */
+export async function updateManagerSessionLinkage(
+	sessionId: string,
+	organizationId: string,
+	linkage: { repoId?: string | null; configurationId?: string | null },
+): Promise<void> {
+	const db = getDb();
+	const updates: Record<string, string | null> = {};
+	if (linkage.repoId !== undefined) updates.repoId = linkage.repoId;
+	if (linkage.configurationId !== undefined) updates.configurationId = linkage.configurationId;
+	if (Object.keys(updates).length === 0) return;
+	await db
+		.update(sessions)
+		.set(updates)
+		.where(and(eq(sessions.id, sessionId), eq(sessions.organizationId, organizationId)));
+}
+
+// ============================================
+// Task Session Creation
+// ============================================
+
 export interface CreateTaskSessionInput {
 	id?: string;
 	organizationId: string;
 	createdBy: string;
-	repoId: string;
-	repoBaselineId: string;
-	repoBaselineTargetId: string;
+	repoId?: string | null;
+	repoBaselineId?: string | null;
+	repoBaselineTargetId?: string | null;
 	workerId?: string | null;
 	workerRunId?: string | null;
 	parentSessionId?: string | null;
@@ -1781,11 +1905,19 @@ export interface CreateTaskSessionInput {
 	visibility?: "private" | "shared" | "org";
 	initialPrompt?: string | null;
 	title?: string | null;
+	sandboxProvider?: "modal" | "e2b";
 }
 
 export async function createTaskSession(input: CreateTaskSessionInput): Promise<SessionRow> {
-	if (!input.repoId || !input.repoBaselineId || !input.repoBaselineTargetId) {
-		throw new Error("Task session requires repo + baseline + baseline target linkage");
+	// Configured task sessions require full repo linkage for baseline diffing,
+	// UNLESS they're spawned by a manager (parentSessionId set) — those only
+	// need configurationId for snapshot/repo resolution, not baseline tracking.
+	if (
+		input.configurationId &&
+		!input.parentSessionId &&
+		(!input.repoId || !input.repoBaselineId || !input.repoBaselineTargetId)
+	) {
+		throw new Error("Configured task session requires repo + baseline + baseline target linkage");
 	}
 
 	const db = getDb();
@@ -1801,9 +1933,9 @@ export async function createTaskSession(input: CreateTaskSessionInput): Promise<
 			runtimeStatus: "starting",
 			operatorStatus: "active",
 			visibility: input.visibility ?? "private",
-			repoId: input.repoId,
-			repoBaselineId: input.repoBaselineId,
-			repoBaselineTargetId: input.repoBaselineTargetId,
+			repoId: input.repoId ?? null,
+			repoBaselineId: input.repoBaselineId ?? null,
+			repoBaselineTargetId: input.repoBaselineTargetId ?? null,
 			workerId: input.workerId ?? null,
 			workerRunId: input.workerRunId ?? null,
 			parentSessionId: input.parentSessionId ?? null,
@@ -1812,6 +1944,7 @@ export async function createTaskSession(input: CreateTaskSessionInput): Promise<
 			configurationId: input.configurationId ?? null,
 			initialPrompt: input.initialPrompt ?? null,
 			title: input.title ?? null,
+			...(input.sandboxProvider ? { sandboxProvider: input.sandboxProvider } : {}),
 		})
 		.returning();
 

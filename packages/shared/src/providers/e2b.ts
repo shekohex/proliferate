@@ -166,16 +166,22 @@ export class E2BProvider implements SandboxProvider {
 
 		if (isSnapshot) {
 			try {
-				// Resume from paused sandbox - connecting auto-resumes
-				log.debug({ snapshotId: opts.snapshotId }, "Resuming from snapshot");
 				const connectStartMs = Date.now();
-				sandbox = await Sandbox.connect(opts.snapshotId!, getE2BConnectOpts());
+				if (opts.currentSandboxId) {
+					// Pause/resume: reconnect to the same (paused) sandbox
+					log.debug({ sandboxId: opts.currentSandboxId }, "Resuming paused sandbox");
+					sandbox = await Sandbox.connect(opts.currentSandboxId, getE2BConnectOpts());
+				} else {
+					// Snapshot branching: create a NEW sandbox from a snapshot
+					log.debug({ snapshotId: opts.snapshotId }, "Creating sandbox from snapshot");
+					sandbox = await Sandbox.create(opts.snapshotId!, sandboxOpts);
+				}
 				logLatency("provider.create_sandbox.resume.connect", {
 					provider: this.type,
 					sessionId: opts.sessionId,
 					durationMs: Date.now() - connectStartMs,
 				});
-				log.debug({ sandboxId: sandbox.sandboxId }, "Sandbox resumed");
+				log.debug({ sandboxId: sandbox.sandboxId }, "Sandbox ready from snapshot");
 
 				// Re-inject environment variables (they don't persist across pause/resume)
 				// Using JSON file approach to avoid shell escaping issues (security)
@@ -250,6 +256,20 @@ export class E2BProvider implements SandboxProvider {
 			isSnapshot,
 			durationMs: Date.now() - setupWorkspaceStartMs,
 		});
+
+		// Kill stale processes from snapshot resume to avoid port conflicts.
+		// Must run BEFORE setupEssential starts new processes (OpenCode on :4096).
+		// On fresh sandboxes this is a no-op.
+		// Uses fuser to kill by port (more reliable than pkill in E2B snapshots
+		// where frozen processes may not appear in pkill's process scan).
+		if (isSnapshot) {
+			await sandbox.commands
+				.run(
+					"fuser -k 4096/tcp 4000/tcp 8470/tcp 2>/dev/null || true; pkill -9 caddy || true; sleep 0.5",
+					{ timeoutMs: 10000 },
+				)
+				.catch(() => {});
+		}
 
 		// Setup essential dependencies (blocking - must complete before API returns)
 		const setupEssentialStartMs = Date.now();
@@ -486,6 +506,7 @@ export class E2BProvider implements SandboxProvider {
 		const gitCredentials = buildGitCredentialsMap(repos);
 		if (Object.keys(gitCredentials).length > 0) {
 			log.debug({ repoCount: repos.length }, "Writing git credentials");
+			await sandbox.commands.run("rm -f /tmp/.git-credentials.json", { timeoutMs: 5000 });
 			await sandbox.files.write("/tmp/.git-credentials.json", JSON.stringify(gitCredentials));
 		}
 
@@ -675,15 +696,38 @@ export class E2BProvider implements SandboxProvider {
 			log.warn("OpenCode using direct key (no LLM proxy)");
 			opencodeEnv.ANTHROPIC_API_KEY = opts.envVars.ANTHROPIC_API_KEY;
 		} else {
-			log.warn("OpenCode has no LLM proxy AND no direct key");
+			log.error(
+				"OpenCode has no LLM proxy AND no direct ANTHROPIC_API_KEY — it will fail to start",
+			);
 		}
 		sandbox.commands
 			.run(
 				`cd ${repoDir} && opencode serve --print-logs --log-level ERROR --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1`,
 				{ timeoutMs: 3600000, envs: opencodeEnv }, // Long timeout, runs in background
 			)
+			.then(async (result) => {
+				if (result.exitCode !== 0) {
+					let logTail = "";
+					try {
+						const tailResult = await sandbox.commands.run("tail -50 /tmp/opencode.log", {
+							timeoutMs: 5000,
+						});
+						logTail = tailResult.stdout;
+					} catch {
+						/* sandbox may already be gone */
+					}
+					log.warn(
+						{
+							exitCode: result.exitCode,
+							stderr: capOutput(result.stderr),
+							logTail: capOutput(logTail),
+						},
+						"OpenCode exited unexpectedly",
+					);
+				}
+			})
 			.catch((err: unknown) => {
-				providerLogger.debug({ err }, "OpenCode process ended");
+				log.warn({ err }, "OpenCode process failed");
 			});
 		// Don't await - let it run in background
 	}
@@ -742,6 +786,25 @@ export class E2BProvider implements SandboxProvider {
 			})
 			.catch((err: unknown) => {
 				providerLogger.debug({ err }, "sandbox-mcp process ended");
+			});
+		// Don't await - runs in background
+
+		// Start sandbox-daemon (FS, PTY, ports, health on port 8470)
+		log.debug("Starting sandbox-daemon (async)");
+		const daemonEnvs: Record<string, string> = {
+			NODE_ENV: "production",
+			PROLIFERATE_WORKSPACE_ROOT: "/home/user/workspace",
+		};
+		if (opts.envVars.SANDBOX_MCP_AUTH_TOKEN) {
+			daemonEnvs.PROLIFERATE_SESSION_TOKEN = opts.envVars.SANDBOX_MCP_AUTH_TOKEN;
+		}
+		sandbox.commands
+			.run("sandbox-daemon --mode=worker > /tmp/sandbox-daemon.log 2>&1", {
+				timeoutMs: 3600000,
+				envs: daemonEnvs,
+			})
+			.catch((err: unknown) => {
+				providerLogger.warn({ err }, "sandbox-daemon process failed");
 			});
 		// Don't await - runs in background
 
@@ -863,6 +926,7 @@ export class E2BProvider implements SandboxProvider {
 
 		// Always refresh git credentials on restore (write even if empty to clear stale tokens).
 		const gitCredentials = buildGitCredentialsMap(opts.repos);
+		await sandbox.commands.run("rm -f /tmp/.git-credentials.json", { timeoutMs: 5000 });
 		await sandbox.files.write("/tmp/.git-credentials.json", JSON.stringify(gitCredentials));
 
 		if (!doPull) return;
@@ -991,8 +1055,16 @@ export class E2BProvider implements SandboxProvider {
 	}
 
 	async snapshot(sessionId: string, sandboxId: string): Promise<SnapshotResult> {
-		providerLogger.info({ sessionId }, "Taking snapshot");
-		return this.pause(sessionId, sandboxId);
+		providerLogger.info({ sessionId, sandboxId }, "Taking snapshot (createSnapshot)");
+		const startMs = Date.now();
+
+		const result = await Sandbox.createSnapshot(sandboxId, getE2BApiOpts());
+
+		providerLogger.info(
+			{ sandboxId, snapshotId: result.snapshotId, durationMs: Date.now() - startMs },
+			"Snapshot created",
+		);
+		return { snapshotId: result.snapshotId };
 	}
 
 	async pause(sessionId: string, sandboxId: string): Promise<PauseResult> {

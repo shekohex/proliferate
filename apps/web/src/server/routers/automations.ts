@@ -12,6 +12,7 @@ import {
 	orgs,
 	runs,
 	schedules,
+	sessions,
 	templates,
 	wakes,
 	workers,
@@ -899,6 +900,85 @@ export const automationsRouter = {
 	// ============================================
 
 	/**
+	 * Create a new worker (coworker) with its manager session.
+	 *
+	 * Uses a 3-step process to handle the circular FK between workers and sessions:
+	 * 1. Create a placeholder session (kind=null)
+	 * 2. Create the worker referencing that session
+	 * 3. Promote the session to kind='manager' with the worker ID
+	 */
+	createWorker: orgProcedure
+		.input(
+			z.object({
+				name: z.string().min(1).max(200).optional(),
+				objective: z.string().max(5000).optional(),
+				modelId: z.string().optional(),
+				repoId: z.string().uuid().optional(),
+				configurationId: z.string().uuid().optional(),
+			}),
+		)
+		.output(
+			z.object({
+				worker: z.object({
+					id: z.string().uuid(),
+					name: z.string(),
+					status: z.string(),
+					objective: z.string().nullable(),
+					modelId: z.string().nullable(),
+					managerSessionId: z.string().uuid(),
+				}),
+			}),
+		)
+		.handler(async ({ input, context }) => {
+			const name = input?.name || "Untitled coworker";
+
+			// All three steps run in a single transaction to avoid orphaned rows on partial failure
+			const worker = await workers.withTransaction(async (tx) => {
+				// Step 1: Create placeholder session (kind=null to avoid manager_shape_check)
+				const placeholderSession = await sessions.createManagerSessionPlaceholder(
+					{
+						organizationId: context.orgId,
+						createdBy: context.user.id,
+						repoId: input?.repoId,
+						configurationId: input?.configurationId,
+						visibility: "org",
+						title: `Manager: ${name}`,
+					},
+					tx,
+				);
+
+				// Step 2: Create worker linked to the placeholder session
+				const w = await workers.createWorker(
+					{
+						organizationId: context.orgId,
+						name,
+						objective: input?.objective,
+						managerSessionId: placeholderSession.id,
+						modelId: input?.modelId,
+						createdBy: context.user.id,
+					},
+					tx,
+				);
+
+				// Step 3: Promote session to kind='manager' with worker linkage
+				await sessions.promoteToManagerSession(placeholderSession.id, w.id, tx);
+
+				return w;
+			});
+
+			return {
+				worker: {
+					id: worker.id,
+					name: worker.name,
+					status: worker.status,
+					objective: worker.objective,
+					modelId: worker.modelId,
+					managerSessionId: worker.managerSessionId,
+				},
+			};
+		}),
+
+	/**
 	 * List all workers for the org with aggregate counts.
 	 */
 	listWorkers: orgProcedure
@@ -1286,6 +1366,28 @@ export const automationsRouter = {
 		.handler(async ({ input, context }) => {
 			try {
 				const result = await workers.runNow(input.workerId, context.orgId);
+
+				// Notify the gateway to start/resume the manager session so it picks up the wake
+				const worker = await workers.findWorkerById(input.workerId, context.orgId);
+				if (worker && GATEWAY_URL) {
+					const { createSyncClient } = await import("@proliferate/gateway-clients");
+					const { env } = await import("@proliferate/environment/server");
+					const authToken = env.SERVICE_TO_SERVICE_AUTH_TOKEN;
+					if (authToken) {
+						const gateway = createSyncClient({
+							baseUrl: GATEWAY_URL,
+							auth: {
+								type: "service",
+								name: "web-run-worker",
+								secret: authToken,
+							},
+						});
+						gateway.eagerStart(worker.managerSessionId).catch(() => {
+							// Best-effort: session will start on next WebSocket connect if this fails
+						});
+					}
+				}
+
 				return { wakeEventId: result.wakeEvent.id };
 			} catch (err) {
 				if (err instanceof workers.WorkerNotFoundError) {
@@ -1311,6 +1413,8 @@ export const automationsRouter = {
 				name: z.string().optional(),
 				objective: z.string().optional(),
 				modelId: z.string().optional(),
+				repoId: z.string().uuid().nullable().optional(),
+				configurationId: z.string().uuid().nullable().optional(),
 			}),
 		)
 		.output(
@@ -1335,11 +1439,20 @@ export const automationsRouter = {
 			}),
 		)
 		.handler(async ({ input, context }) => {
-			const { id, ...fields } = input;
+			const { id, repoId, configurationId, ...fields } = input;
 			const updated = await workers.updateWorker(id, context.orgId, fields);
 			if (!updated) {
 				throw new ORPCError("NOT_FOUND", { message: "Worker not found" });
 			}
+
+			// Propagate repo/configuration changes to the manager session
+			if (repoId !== undefined || configurationId !== undefined) {
+				await sessions.updateManagerSessionLinkage(updated.managerSessionId, context.orgId, {
+					repoId: repoId ?? null,
+					configurationId: configurationId ?? null,
+				});
+			}
+
 			return { worker: mapWorkerToDetail(updated) };
 		}),
 
