@@ -11,8 +11,9 @@ import {
 	RecentEventsSection,
 	UsageSummarySection,
 } from "@/components/settings/billing";
-import { useBilling, useOrgMembers, useUpdateBillingSettings } from "@/hooks";
-import { useActiveOrganization, useSession } from "@/lib/auth/client";
+import { useBilling, useUpdateBillingSettings } from "@/hooks";
+import { useCurrentUserRole } from "@/hooks/org/use-current-user-role";
+import { useActiveOrganization } from "@/lib/auth/client";
 import type { BillingInfo } from "@/types/billing";
 import { env } from "@proliferate/environment/public";
 import { useRouter } from "next/navigation";
@@ -22,13 +23,7 @@ export default function BillingPage() {
 	const billingEnabled = env.NEXT_PUBLIC_BILLING_ENABLED;
 	const router = useRouter();
 	const { data: activeOrg, isPending: isOrgPending } = useActiveOrganization();
-	const { data: authSession } = useSession();
-	const currentUserId = authSession?.user?.id;
-
-	const { data: members } = useOrgMembers(activeOrg?.id ?? "");
-
-	const currentUserRole = members?.find((m) => m.userId === currentUserId)?.role;
-	const isAdmin = currentUserRole === "owner" || currentUserRole === "admin";
+	const { isAdmin } = useCurrentUserRole();
 
 	const { data: billing, isPending: isBillingPending, error } = useBilling();
 

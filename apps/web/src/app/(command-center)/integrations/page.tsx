@@ -1,1 +1,5 @@
-export { default } from "../dashboard/integrations/page";
+import { redirect } from "next/navigation";
+
+export default function IntegrationsPage() {
+	redirect("/dashboard/integrations");
+}

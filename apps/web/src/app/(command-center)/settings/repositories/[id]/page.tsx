@@ -1,5 +1,6 @@
 "use client";
 
+import { BaselineStatusBadge } from "@/components/settings/repositories/baseline-status-badge";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -35,28 +36,6 @@ import { useState } from "react";
 // ============================================
 // Status display helpers
 // ============================================
-
-function BaselineStatusBadge({ status }: { status: string }) {
-	const styles: Record<string, string> = {
-		ready: "text-foreground",
-		validating: "text-muted-foreground",
-		stale: "text-muted-foreground",
-		failed: "text-destructive",
-	};
-
-	const labels: Record<string, string> = {
-		ready: "Ready",
-		validating: "Validating",
-		stale: "Stale",
-		failed: "Failed",
-	};
-
-	return (
-		<span className={cn("text-xs font-medium", styles[status] ?? "text-muted-foreground")}>
-			{labels[status] ?? status}
-		</span>
-	);
-}
 
 function formatDate(dateStr: string | null | undefined): string {
 	if (!dateStr) return "\u2014";

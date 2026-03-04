@@ -1,7 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { StepBilling } from "@/components/onboarding/step-billing";
 import { StepComplete } from "@/components/onboarding/step-complete";
 import { StepCreateOrg } from "@/components/onboarding/step-create-org";

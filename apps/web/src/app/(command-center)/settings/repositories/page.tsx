@@ -1,6 +1,7 @@
 "use client";
 
 import { PageShell } from "@/components/dashboard/page-shell";
+import { BaselineStatusBadge } from "@/components/settings/repositories/baseline-status-badge";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -29,32 +30,6 @@ import type { GitHubRepo, Repo } from "@/types";
 import { ExternalLink, MoreVertical, Plus, Search, Star, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-
-// ============================================
-// Baseline status display
-// ============================================
-
-function BaselineStatusBadge({ status }: { status: string }) {
-	const styles: Record<string, string> = {
-		ready: "text-foreground",
-		validating: "text-muted-foreground",
-		stale: "text-muted-foreground",
-		failed: "text-destructive",
-	};
-
-	const labels: Record<string, string> = {
-		ready: "Ready",
-		validating: "Validating",
-		stale: "Stale",
-		failed: "Failed",
-	};
-
-	return (
-		<span className={cn("text-xs", styles[status] ?? "text-muted-foreground")}>
-			{labels[status] ?? status}
-		</span>
-	);
-}
 
 // ============================================
 // Main Page

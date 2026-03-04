@@ -2,18 +2,12 @@
 
 import { PageShell } from "@/components/dashboard/page-shell";
 import { DangerZoneSection, WorkspaceSection } from "@/components/settings/general";
-import { useOrgMembers } from "@/hooks/use-orgs";
-import { useActiveOrganization, useSession } from "@/lib/auth/client";
+import { useCurrentUserRole } from "@/hooks/org/use-current-user-role";
+import { useActiveOrganization } from "@/lib/auth/client";
 
 export default function GeneralPage() {
 	const { data: activeOrg, isPending: isActiveOrgPending } = useActiveOrganization();
-	const { data: authSession } = useSession();
-	const currentUserId = authSession?.user?.id;
-
-	const { data: members } = useOrgMembers(activeOrg?.id ?? "");
-
-	const currentUserRole = members?.find((m) => m.userId === currentUserId)?.role;
-	const isOwner = currentUserRole === "owner";
+	const { isOwner } = useCurrentUserRole();
 
 	if (isActiveOrgPending || !activeOrg) {
 		return (
