@@ -58,6 +58,9 @@ module.exports = {
 					foreground: "hsl(var(--sidebar-foreground))",
 					border: "hsl(var(--sidebar-border))",
 				},
+				success: "hsl(var(--success))",
+				warning: "hsl(var(--warning))",
+				info: "hsl(var(--info))",
 				"chat-input": "hsl(var(--chat-input))",
 			},
 			boxShadow: {

@@ -1,64 +1,20 @@
 "use client";
 
 import { PageShell } from "@/components/dashboard/page-shell";
-import { BaselineStatusBadge } from "@/components/settings/repositories/baseline-status-badge";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AddRepoDialog } from "@/components/settings/repositories/add-repo-dialog";
+import { RepoRow } from "@/components/settings/repositories/repo-row";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { LoadingDots } from "@/components/ui/loading-dots";
-import { useActiveBaselinesByRepos } from "@/hooks/use-baselines";
-import { useCreateRepo, useDeleteRepo, useRepos, useSearchRepos } from "@/hooks/use-repos";
-import { cn } from "@/lib/utils";
-import type { GitHubRepo, Repo } from "@/types";
-import { ExternalLink, MoreVertical, Plus, Search, Star, Trash2 } from "lucide-react";
+import { useReposList } from "@/hooks/settings/use-repos-list";
+import { Plus, Search } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-
-// ============================================
-// Main Page
-// ============================================
+import { useState } from "react";
 
 export default function RepositoriesPage() {
-	const { data: repos, isLoading } = useRepos();
 	const [filterQuery, setFilterQuery] = useState("");
 	const [addDialogOpen, setAddDialogOpen] = useState(false);
-
-	const repoIds = useMemo(() => (repos ?? []).map((r) => r.id), [repos]);
-	const { data: activeBaselines } = useActiveBaselinesByRepos(repoIds, repoIds.length > 0);
-
-	// Index baselines by repoId for O(1) lookup
-	const baselinesByRepo = useMemo(() => {
-		const list = activeBaselines ?? [];
-		const map = new Map<string, (typeof list)[number]>();
-		for (const b of list) {
-			map.set(b.repoId, b);
-		}
-		return map;
-	}, [activeBaselines]);
-
-	const reposList = useMemo(() => {
-		const list = repos ?? [];
-		if (!filterQuery) return list;
-		const q = filterQuery.toLowerCase();
-		return list.filter((r) => r.githubRepoName.toLowerCase().includes(q));
-	}, [repos, filterQuery]);
+	const { repos, filteredRepos, baselinesByRepo, isLoading } = useReposList(filterQuery);
 
 	if (isLoading) {
 		return (
@@ -71,7 +27,7 @@ export default function RepositoriesPage() {
 	}
 
 	const hasRepos = (repos ?? []).length > 0;
-	const hasResults = reposList.length > 0;
+	const hasResults = filteredRepos.length > 0;
 
 	return (
 		<PageShell
@@ -127,7 +83,7 @@ export default function RepositoriesPage() {
 						<span className="w-16 text-center shrink-0">Source</span>
 					</div>
 
-					{reposList.map((repo) => (
+					{filteredRepos.map((repo) => (
 						<RepoRow key={repo.id} repo={repo} baseline={baselinesByRepo.get(repo.id)} />
 					))}
 				</div>
@@ -139,240 +95,5 @@ export default function RepositoriesPage() {
 				existingRepoIds={new Set((repos ?? []).map((r) => r.githubRepoId))}
 			/>
 		</PageShell>
-	);
-}
-
-// ============================================
-// Repo Row
-// ============================================
-
-interface BaselineInfo {
-	id: string;
-	repoId: string;
-	status: string;
-	version: string | null;
-}
-
-function RepoRow({ repo, baseline }: { repo: Repo; baseline?: BaselineInfo }) {
-	const deleteRepo = useDeleteRepo();
-	const [deleteOpen, setDeleteOpen] = useState(false);
-
-	const handleDelete = async () => {
-		await deleteRepo.mutateAsync({ id: repo.id });
-		setDeleteOpen(false);
-	};
-
-	return (
-		<>
-			<div className="border-b border-border/50 last:border-0">
-				<Link
-					href={`/settings/repositories/${repo.id}`}
-					className="flex items-center hover:bg-muted/50 transition-colors px-4 py-2.5 text-sm"
-				>
-					<span className="flex-1 min-w-0 font-medium truncate">{repo.githubRepoName}</span>
-					<span className="w-20 text-center text-xs text-muted-foreground shrink-0">
-						{repo.defaultBranch || "main"}
-					</span>
-					<span className="w-24 text-center text-xs text-muted-foreground shrink-0 truncate">
-						{baseline?.version ?? "—"}
-					</span>
-					<span className="w-20 flex justify-center shrink-0">
-						{baseline ? (
-							<BaselineStatusBadge status={baseline.status} />
-						) : (
-							<span className="text-xs text-muted-foreground">—</span>
-						)}
-					</span>
-					<span className="w-16 text-center text-xs text-muted-foreground shrink-0">
-						{repo.source === "github-app" ? "GitHub" : repo.isPrivate ? "Private" : "Public"}
-					</span>
-
-					<div className="shrink-0 ml-2" onClick={(e) => e.preventDefault()}>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button variant="ghost" size="icon" className="h-7 w-7">
-									<MoreVertical className="h-3.5 w-3.5" />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end">
-								<DropdownMenuItem asChild>
-									<Link href={`/settings/repositories/${repo.id}`}>View details</Link>
-								</DropdownMenuItem>
-								<DropdownMenuItem asChild>
-									<a href={repo.githubUrl} target="_blank" rel="noopener noreferrer">
-										<ExternalLink className="h-4 w-4 mr-2" />
-										Open on GitHub
-									</a>
-								</DropdownMenuItem>
-								<DropdownMenuSeparator />
-								<DropdownMenuItem onClick={() => setDeleteOpen(true)} className="text-destructive">
-									<Trash2 className="h-4 w-4 mr-2" />
-									Delete
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</div>
-				</Link>
-			</div>
-
-			<AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Delete repository</AlertDialogTitle>
-						<AlertDialogDescription>
-							Are you sure you want to remove {repo.githubRepoName}? This will not affect
-							configurations that reference this repository.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleDelete}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							{deleteRepo.isPending ? "Deleting..." : "Delete"}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</>
-	);
-}
-
-// ============================================
-// Add Repository Dialog
-// ============================================
-
-function AddRepoDialog({
-	open,
-	onOpenChange,
-	existingRepoIds,
-}: {
-	open: boolean;
-	onOpenChange: (open: boolean) => void;
-	existingRepoIds: Set<string>;
-}) {
-	const [searchQuery, setSearchQuery] = useState("");
-	const [debouncedQuery, setDebouncedQuery] = useState("");
-	const [addingRepoId, setAddingRepoId] = useState<number | null>(null);
-	const createRepo = useCreateRepo();
-
-	useEffect(() => {
-		const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
-		return () => clearTimeout(timer);
-	}, [searchQuery]);
-
-	// Reset search when dialog closes
-	useEffect(() => {
-		if (!open) {
-			setSearchQuery("");
-			setDebouncedQuery("");
-		}
-	}, [open]);
-
-	const { data: searchResults, isLoading: searchLoading } = useSearchRepos(
-		debouncedQuery,
-		debouncedQuery.length >= 2,
-	);
-
-	const handleAddRepo = async (repo: GitHubRepo) => {
-		setAddingRepoId(repo.id);
-		try {
-			await createRepo.mutateAsync({
-				githubRepoId: String(repo.id),
-				githubRepoName: repo.full_name,
-				githubUrl: repo.html_url,
-				defaultBranch: repo.default_branch,
-			});
-			onOpenChange(false);
-		} catch {
-			// Error is surfaced by TanStack Query's mutation state
-		} finally {
-			setAddingRepoId(null);
-		}
-	};
-
-	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-lg">
-				<DialogHeader>
-					<DialogTitle>Add Repository</DialogTitle>
-				</DialogHeader>
-
-				<div className="space-y-4">
-					<div className="relative">
-						<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-						<Input
-							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
-							placeholder="Search public repos (e.g., vercel/next.js)"
-							className="pl-9 h-9 text-sm"
-							autoFocus
-						/>
-					</div>
-
-					<div className="max-h-72 overflow-y-auto">
-						{searchLoading ? (
-							<div className="py-8 flex justify-center">
-								<LoadingDots size="sm" className="text-muted-foreground" />
-							</div>
-						) : searchResults && searchResults.length > 0 ? (
-							<div className="space-y-0.5">
-								{searchResults.map((repo) => {
-									const isConnected = existingRepoIds.has(String(repo.id));
-
-									return (
-										<div
-											key={repo.id}
-											className={cn(
-												"flex items-center justify-between py-2 px-2 rounded-md transition-colors",
-												isConnected ? "opacity-50" : "hover:bg-muted/50",
-											)}
-										>
-											<div className="min-w-0 flex-1">
-												<p className="text-sm font-medium truncate">{repo.full_name}</p>
-												<div className="flex items-center gap-2 text-xs text-muted-foreground">
-													{repo.stargazers_count !== undefined && (
-														<span className="flex items-center gap-0.5">
-															<Star className="h-3 w-3" />
-															{repo.stargazers_count.toLocaleString()}
-														</span>
-													)}
-													{repo.language && <span>{repo.language}</span>}
-													<span>{repo.default_branch}</span>
-												</div>
-											</div>
-											{isConnected ? (
-												<span className="text-xs text-muted-foreground shrink-0 ml-3">
-													Connected
-												</span>
-											) : (
-												<Button
-													variant="outline"
-													size="sm"
-													className="h-7 text-xs shrink-0 ml-3"
-													onClick={() => handleAddRepo(repo)}
-													disabled={addingRepoId === repo.id}
-												>
-													{addingRepoId === repo.id ? "..." : "Add"}
-												</Button>
-											)}
-										</div>
-									);
-								})}
-							</div>
-						) : debouncedQuery.length >= 2 ? (
-							<p className="text-sm text-muted-foreground text-center py-8">
-								No public repositories found
-							</p>
-						) : (
-							<p className="text-sm text-muted-foreground text-center py-8">
-								Enter at least 2 characters to search
-							</p>
-						)}
-					</div>
-				</div>
-			</DialogContent>
-		</Dialog>
 	);
 }

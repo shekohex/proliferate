@@ -36,6 +36,9 @@
 		/* ─── Status Colors (Use sparingly, NO tinted backgrounds) ─── */
 		--destructive: 0 84% 60%; /* Crisp Red */
 		--destructive-foreground: 0 0% 98%;
+		--success: 142 71% 45%; /* Green */
+		--warning: 38 92% 50%; /* Amber/Orange */
+		--info: 217 91% 60%; /* Blue */
 
 		/* ─── Geometry ─── */
 		--radius: 0.5rem; /* 8px base for product */
@@ -75,6 +78,9 @@
 		/* ─── Status Colors ─── */
 		--destructive: 0 63% 31%; /* Darker red for contrast */
 		--destructive-foreground: 0 0% 98%;
+		--success: 142 71% 45%;
+		--warning: 38 92% 50%;
+		--info: 217 91% 60%;
 	}
 }
 

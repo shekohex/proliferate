@@ -1,10 +1,11 @@
 "use client";
 
 import { CodingSession } from "@/components/coding-session/coding-session";
+import { CoworkerBanner } from "@/components/workspace/coworker-banner";
+import { SessionStatusMessage } from "@/components/workspace/session-status-message";
 import { useOrgSwitch } from "@/hooks/org/use-org-switch";
 import { useMarkSessionViewed, useSessionData } from "@/hooks/use-sessions";
 import { useDashboardStore } from "@/stores/dashboard";
-import { X, Zap } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { use, useCallback, useEffect, useState } from "react";
 
@@ -43,43 +44,22 @@ export default function SessionDetailPage({
 	}, [id, setActiveSession]);
 
 	if (targetOrgId && (isOrgPending || shouldSwitchOrg || isSwitching)) {
-		return (
-			<div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-				Switching organization...
-			</div>
-		);
+		return <SessionStatusMessage message="Switching organization..." />;
 	}
 
 	if (switchError) {
-		return (
-			<div className="h-full flex items-center justify-center text-sm text-destructive">
-				{switchError}
-			</div>
-		);
+		return <SessionStatusMessage message={switchError} variant="destructive" />;
 	}
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col">
-			{showCoworkerBanner && (
-				<div className="flex items-center gap-2 px-4 py-2 bg-muted/60 border-b border-border text-sm text-muted-foreground shrink-0">
-					<Zap className="h-3.5 w-3.5" />
-					<span>Resumed from Coworker</span>
-					<button
-						type="button"
-						onClick={() => setShowCoworkerBanner(false)}
-						className="ml-auto text-muted-foreground/60 hover:text-foreground transition-colors"
-					>
-						<X className="h-3.5 w-3.5" />
-					</button>
-				</div>
-			)}
+			{showCoworkerBanner && <CoworkerBanner onDismiss={() => setShowCoworkerBanner(false)} />}
 			<div className="flex-1 min-h-0 flex flex-col">
 				<CodingSession
 					sessionId={id}
 					runId={runId ?? undefined}
 					initialPrompt={pendingPrompt || sessionData?.initialPrompt || undefined}
-					onError={(error) => {
-						console.error("Session error:", error);
+					onError={(_error) => {
 						clearPendingPrompt();
 					}}
 				/>

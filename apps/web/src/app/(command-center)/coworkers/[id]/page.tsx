@@ -1,11 +1,7 @@
 "use client";
 
-import {
-	type ChildSession,
-	type PendingDirective,
-	WorkerActivityTab,
-	type WorkerRunWithEvents,
-} from "@/components/automations/worker-activity-tab";
+import { LegacyAutomationDetail } from "@/components/automations/legacy-automation-detail";
+import { WorkerActivityTab } from "@/components/automations/worker-activity-tab";
 import { WorkerFailureBanner } from "@/components/automations/worker-failure-banner";
 import { WorkerSessionsTab } from "@/components/automations/worker-sessions-tab";
 import { WorkerSettingsTab } from "@/components/automations/worker-settings-tab";
@@ -19,41 +15,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageBackLink } from "@/components/ui/page-back-link";
 import { StatusDot } from "@/components/ui/status-dot";
-import { useAutomation } from "@/hooks/use-automations";
+import { COWORKER_DETAIL_TABS, type CoworkerDetailTab } from "@/config/coworkers";
 import {
-	useDeleteWorker,
-	usePauseWorker,
-	usePendingDirectives,
-	useResumeWorker,
-	useRunWorkerNow,
-	useSendDirective,
-	useUpdateWorker,
-	useWorker,
-	useWorkerRuns,
-	useWorkerSessions,
-} from "@/hooks/use-workers";
+	useCoworkerActions,
+	useCoworkerDetailData,
+} from "@/hooks/automations/use-coworker-actions";
+import { useAutomation } from "@/hooks/use-automations";
+import { useWorker } from "@/hooks/use-workers";
 import { cn } from "@/lib/utils";
 import { ExternalLink, Loader2, MoreVertical, Pause, Play, RotateCcw } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { use, useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
-
-// ============================================
-// Types
-// ============================================
-
-type DetailTab = "activity" | "sessions" | "settings";
-
-const TABS: { value: DetailTab; label: string }[] = [
-	{ value: "activity", label: "Activity" },
-	{ value: "sessions", label: "Sessions" },
-	{ value: "settings", label: "Settings" },
-];
-
-// ============================================
-// Page Component
-// ============================================
+import { use, useState } from "react";
 
 export default function CoworkerDetailPage({
 	params,
@@ -61,117 +33,40 @@ export default function CoworkerDetailPage({
 	params: Promise<{ id: string }>;
 }) {
 	const { id } = use(params);
-	const router = useRouter();
-	const [activeTab, setActiveTab] = useState<DetailTab>("activity");
+	const [activeTab, setActiveTab] = useState<CoworkerDetailTab>("activity");
 
-	// Data — try V1 worker first, fall back to legacy automation
 	const { data: worker, isLoading: isLoadingWorker, error: workerError } = useWorker(id);
-	const { data: automation, isLoading: isLoadingAutomation } = useAutomation(id);
+	const { data: _automation, isLoading: isLoadingAutomation } = useAutomation(id);
 
-	// Determine if the worker is in a state that benefits from polling
 	const isWorkerActive = worker?.status === "active";
-
-	// Worker-specific data (poll when active)
-	const { data: runs = [], isLoading: isLoadingRuns } = useWorkerRuns(id, {
-		limit: 10,
-		pollingEnabled: isWorkerActive,
-	});
-	const { data: workerSessions = [], isLoading: isLoadingSessions } = useWorkerSessions(id, {
-		pollingEnabled: isWorkerActive,
-	});
-	const { data: pendingDirectives = [] } = usePendingDirectives(id);
-
-	// Mutations
-	const pauseWorker = usePauseWorker();
-	const resumeWorker = useResumeWorker();
-	const runNow = useRunWorkerNow();
-	const sendDirective = useSendDirective(id);
-	const updateWorker = useUpdateWorker(id);
-	const deleteWorker = useDeleteWorker();
-
+	const hasWorker = !!worker && !workerError;
 	const isLoading = isLoadingWorker && isLoadingAutomation;
 
-	// Determine if we have a V1 worker
-	const hasWorker = !!worker && !workerError;
+	const {
+		handleSendDirective,
+		handlePause,
+		handleResume,
+		handleRunNow,
+		handleDelete,
+		handleRestart,
+		updateWorker,
+		sendDirective,
+		pauseWorker,
+		resumeWorker,
+		runNow,
+	} = useCoworkerActions(id);
 
-	// Compute aggregate counts from runs/sessions
-	const activeTaskCount = useMemo(
-		() =>
-			workerSessions.filter(
-				(s) => s.status !== "completed" && s.status !== "failed" && s.status !== "cancelled",
-			).length,
-		[workerSessions],
-	);
+	const {
+		workerSessions,
+		activeTaskCount,
+		mappedRuns,
+		mappedDirectives,
+		isLoadingRuns,
+		isLoadingSessions,
+	} = useCoworkerDetailData(id, isWorkerActive);
 
-	const pendingApprovalCount = 0; // Will be enriched by the backend
+	const pendingApprovalCount = 0;
 
-	const handleSendDirective = useCallback(
-		async (content: string) => {
-			try {
-				await sendDirective.mutateAsync({ workerId: id, content });
-				toast.success("Directive sent");
-			} catch (err) {
-				toast.error(err instanceof Error ? err.message : "Failed to send directive");
-			}
-		},
-		[id, sendDirective],
-	);
-
-	const handlePause = useCallback(() => {
-		pauseWorker.mutate(
-			{ workerId: id },
-			{
-				onSuccess: () => toast.success("Coworker paused"),
-				onError: (err) => toast.error(err.message || "Failed to pause"),
-			},
-		);
-	}, [id, pauseWorker]);
-
-	const handleResume = useCallback(() => {
-		resumeWorker.mutate(
-			{ workerId: id },
-			{
-				onSuccess: () => toast.success("Coworker resumed"),
-				onError: (err) => toast.error(err.message || "Failed to resume"),
-			},
-		);
-	}, [id, resumeWorker]);
-
-	const handleRunNow = useCallback(() => {
-		runNow.mutate(
-			{ workerId: id },
-			{
-				onSuccess: () => toast.success("Wake event queued"),
-				onError: (err) => toast.error(err.message || "Failed to run"),
-			},
-		);
-	}, [id, runNow]);
-
-	const handleDelete = useCallback(() => {
-		deleteWorker.mutate(
-			{ id },
-			{
-				onSuccess: () => {
-					toast.success("Coworker deleted");
-					router.push("/coworkers");
-				},
-				onError: (err) => toast.error(err.message || "Failed to delete"),
-			},
-		);
-	}, [id, deleteWorker, router]);
-
-	const handleRestart = useCallback(() => {
-		// For now, resume is the restart action for degraded/failed
-		resumeWorker.mutate(
-			{ workerId: id },
-			{
-				onSuccess: () => toast.success("Manager restarted"),
-				onError: (err) => toast.error(err.message || "Failed to restart"),
-			},
-		);
-	}, [id, resumeWorker]);
-
-	// Loading state
 	if (isLoading) {
 		return (
 			<div className="bg-background flex flex-col grow min-h-0 overflow-y-auto">
@@ -186,41 +81,9 @@ export default function CoworkerDetailPage({
 		);
 	}
 
-	// If we have a V1 worker, show the new detail page
 	if (hasWorker) {
 		const workerStatus = worker.status as "active" | "paused" | "degraded" | "failed";
 		const isManagerFailed = workerStatus === "degraded" || workerStatus === "failed";
-
-		// Map runs to the component's expected shape (convert Date → string)
-		const mappedRuns: WorkerRunWithEvents[] = runs.map((run) => ({
-			id: run.id,
-			workerId: run.workerId,
-			status: run.status,
-			summary: run.summary,
-			wakeEventId: run.wakeEventId,
-			createdAt: run.createdAt.toISOString(),
-			startedAt: run.startedAt?.toISOString() ?? null,
-			completedAt: run.completedAt?.toISOString() ?? null,
-			events: run.events.map((e) => ({
-				id: e.id,
-				eventIndex: e.eventIndex,
-				eventType: e.eventType,
-				summaryText: e.summaryText,
-				payloadJson: e.payloadJson,
-				sessionId: e.sessionId,
-				actionInvocationId: e.actionInvocationId,
-				createdAt: e.createdAt.toISOString(),
-			})),
-			childSessions: [] as ChildSession[],
-		}));
-
-		const mappedDirectives: PendingDirective[] = pendingDirectives.map((d) => ({
-			id: d.id,
-			messageType: d.messageType,
-			payloadJson: d.payloadJson,
-			queuedAt: d.queuedAt.toISOString(),
-			senderUserId: d.senderUserId,
-		}));
 
 		return (
 			<div className="bg-background flex flex-col grow min-h-0 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
@@ -254,7 +117,6 @@ export default function CoworkerDetailPage({
 						)}
 
 						<div className="flex items-center gap-1.5 ml-auto">
-							{/* Quick actions based on status */}
 							{workerStatus === "active" && (
 								<>
 									<Button
@@ -325,7 +187,7 @@ export default function CoworkerDetailPage({
 						</div>
 					</div>
 
-					{/* Manager failure banner (H7) */}
+					{/* Manager failure banner */}
 					{isManagerFailed && (
 						<div className="mb-4">
 							<WorkerFailureBanner
@@ -340,20 +202,19 @@ export default function CoworkerDetailPage({
 
 					{/* Tabs */}
 					<div className="flex items-center gap-1 mb-6 border-b border-border/50 pb-3">
-						{TABS.map((tab) => (
-							<button
+						{COWORKER_DETAIL_TABS.map((tab) => (
+							<Button
 								key={tab.value}
-								type="button"
+								variant="ghost"
+								size="sm"
 								onClick={() => setActiveTab(tab.value)}
 								className={cn(
-									"px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
-									activeTab === tab.value
-										? "bg-muted text-foreground"
-										: "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+									"px-3 py-1.5 text-sm font-medium rounded-md",
+									activeTab === tab.value ? "bg-muted text-foreground" : "text-muted-foreground",
 								)}
 							>
 								{tab.label}
-							</button>
+							</Button>
 						))}
 					</div>
 
@@ -416,73 +277,5 @@ export default function CoworkerDetailPage({
 		);
 	}
 
-	// Fallback: Render legacy automation detail page
-	// (This preserves the existing automation detail for non-V1 workers)
 	return <LegacyAutomationDetail id={id} />;
-}
-
-// ============================================
-// Legacy automation detail (preserved from existing code)
-// ============================================
-
-function LegacyAutomationDetail({ id }: { id: string }) {
-	const router = useRouter();
-
-	// Redirect to the original detail page pattern
-	// For the legacy automation flow, we keep the existing page as-is
-	// by importing the components directly
-	const { data: automation, isLoading, error } = useAutomation(id);
-
-	if (isLoading) {
-		return (
-			<div className="bg-background flex flex-col grow min-h-0 overflow-y-auto">
-				<div className="w-full max-w-4xl mx-auto px-6 py-8">
-					<div className="animate-pulse space-y-6">
-						<div className="h-8 w-48 bg-muted rounded" />
-						<div className="h-12 bg-muted rounded-xl" />
-						<div className="h-48 bg-muted rounded-xl" />
-					</div>
-				</div>
-			</div>
-		);
-	}
-
-	if (error || !automation) {
-		return (
-			<div className="bg-background flex flex-col grow min-h-0 overflow-y-auto">
-				<div className="w-full max-w-4xl mx-auto px-6 py-8">
-					<PageBackLink href="/coworkers" label="Coworkers" className="mb-3" />
-					<p className="text-sm text-destructive">Coworker not found</p>
-				</div>
-			</div>
-		);
-	}
-
-	// For legacy automations, redirect to keep old behavior working
-	// The old detail page is fully functional for automations
-	return (
-		<div className="bg-background flex flex-col grow min-h-0 overflow-y-auto">
-			<div className="w-full max-w-4xl mx-auto px-6 py-8">
-				<PageBackLink href="/coworkers" label="Coworkers" className="mb-3" />
-				<div className="flex items-center gap-3 mb-6">
-					<h1 className="text-lg font-semibold tracking-tight text-foreground">
-						{automation.name}
-					</h1>
-					<StatusDot status={automation.enabled ? "active" : "paused"} size="sm" />
-					<span className="text-sm text-muted-foreground">
-						{automation.enabled ? "Active" : "Paused"}
-					</span>
-				</div>
-				<p className="text-sm text-muted-foreground">
-					This coworker uses the legacy automation system. Configuration is available via the events
-					page.
-				</p>
-				<div className="flex gap-2 mt-4">
-					<Button size="sm" variant="outline" asChild>
-						<Link href={`/coworkers/${id}/events`}>View events</Link>
-					</Button>
-				</div>
-			</div>
-		</div>
-	);
 }
