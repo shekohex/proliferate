@@ -19,7 +19,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 // Typed status unions for V1 worker tables.
-// These mirror the canonical types in @proliferate/shared/contracts/v1-entities.ts.
+// These mirror the canonical types in @proliferate/shared/contracts/entities.ts.
 // Defined inline because @proliferate/db cannot depend on @proliferate/shared.
 type WorkerStatus = "active" | "paused" | "degraded" | "failed";
 type WakeEventSource = "tick" | "webhook" | "manual" | "manual_message";
@@ -339,7 +339,7 @@ export const configurations = pgTable(
 		notes: text(),
 		routingDescription: text("routing_description"),
 		createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow(),
-		sandboxProvider: text("sandbox_provider").default("modal").notNull(),
+		sandboxProvider: text("sandbox_provider").default("e2b").notNull(),
 		userId: text("user_id"),
 		localPathHash: text("local_path_hash"),
 		type: text().default("manual"),
@@ -1264,47 +1264,6 @@ export const userSshKeys = pgTable(
 	],
 );
 
-export const cliDeviceCodes = pgTable(
-	"cli_device_codes",
-	{
-		id: uuid().defaultRandom().primaryKey().notNull(),
-		userCode: text("user_code").notNull(),
-		deviceCode: text("device_code").notNull(),
-		userId: text("user_id"),
-		orgId: text("org_id"),
-		status: text().default("pending").notNull(),
-		expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
-		createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow(),
-		authorizedAt: timestamp("authorized_at", { withTimezone: true, mode: "date" }),
-	},
-	(table) => [
-		index("idx_cli_device_codes_device_code").using(
-			"btree",
-			table.deviceCode.asc().nullsLast().op("text_ops"),
-		),
-		index("idx_cli_device_codes_expires").using(
-			"btree",
-			table.expiresAt.asc().nullsLast().op("timestamptz_ops"),
-		),
-		index("idx_cli_device_codes_user_code").using(
-			"btree",
-			table.userCode.asc().nullsLast().op("text_ops"),
-		),
-		foreignKey({
-			columns: [table.userId],
-			foreignColumns: [user.id],
-			name: "cli_device_codes_user_id_fkey",
-		}).onDelete("cascade"),
-		foreignKey({
-			columns: [table.orgId],
-			foreignColumns: [organization.id],
-			name: "cli_device_codes_org_id_fkey",
-		}).onDelete("cascade"),
-		unique("cli_device_codes_user_code_key").on(table.userCode),
-		unique("cli_device_codes_device_code_key").on(table.deviceCode),
-	],
-);
-
 export const apikey = pgTable(
 	"apikey",
 	{
@@ -1433,7 +1392,7 @@ export const sessions = pgTable(
 		idleTimeoutMinutes: integer("idle_timeout_minutes").default(30),
 		autoDeleteDays: integer("auto_delete_days").default(7),
 		source: text().default("web"),
-		sandboxProvider: text("sandbox_provider").default("modal").notNull(),
+		sandboxProvider: text("sandbox_provider").default("e2b").notNull(),
 		origin: text().default("web"),
 		localPathHash: text("local_path_hash"),
 		sandboxUrl: text("sandbox_url"),
@@ -1761,37 +1720,6 @@ export const configurationRepos = pgTable(
 	],
 );
 
-export const cliGithubSelections = pgTable(
-	"cli_github_selections",
-	{
-		userId: text("user_id").notNull(),
-		organizationId: text("organization_id").notNull(),
-		connectionId: text("connection_id").notNull(),
-		expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
-		createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow(),
-	},
-	(table) => [
-		index("idx_cli_github_selections_expires_at").using(
-			"btree",
-			table.expiresAt.asc().nullsLast().op("timestamptz_ops"),
-		),
-		foreignKey({
-			columns: [table.userId],
-			foreignColumns: [user.id],
-			name: "cli_github_selections_user_id_fkey",
-		}).onDelete("cascade"),
-		foreignKey({
-			columns: [table.organizationId],
-			foreignColumns: [organization.id],
-			name: "cli_github_selections_organization_id_fkey",
-		}).onDelete("cascade"),
-		primaryKey({
-			columns: [table.userId, table.organizationId],
-			name: "cli_github_selections_pkey",
-		}),
-	],
-);
-
 // ============================================
 // Billing V2 Tables
 // ============================================
@@ -1862,7 +1790,7 @@ export const sandboxBaseSnapshots = pgTable(
 		snapshotId: text("snapshot_id"),
 		status: text().default("building").notNull(),
 		error: text(),
-		provider: text().default("modal").notNull(),
+		provider: text().default("e2b").notNull(),
 		modalAppName: text("modal_app_name").notNull(),
 		builtAt: timestamp("built_at", { withTimezone: true, mode: "date" }),
 		createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow(),

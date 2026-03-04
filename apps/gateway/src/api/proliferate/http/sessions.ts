@@ -24,12 +24,7 @@ import {
 	reserveIdempotencyKey,
 	storeIdempotencyResponse,
 } from "../../../lib/idempotency";
-import {
-	type ClientType,
-	type SandboxMode,
-	type SessionType,
-	createSession,
-} from "../../../lib/session-creator";
+import { type ClientType, type SessionType, createSession } from "../../../lib/session-creator";
 import { ApiError } from "../../../middleware";
 
 /**
@@ -41,7 +36,6 @@ interface CreateSessionRequest {
 	// Configuration resolution (exactly one required)
 	configurationId?: string;
 	managedConfiguration?: { repoIds?: string[] };
-	cliConfiguration?: { localPathHash: string; displayName?: string };
 
 	// Session config
 	sessionType: SessionType;
@@ -49,7 +43,6 @@ interface CreateSessionRequest {
 	clientMetadata?: Record<string, unknown>;
 
 	// Options
-	sandboxMode?: SandboxMode;
 	snapshotId?: string;
 	initialPrompt?: string;
 	title?: string;
@@ -59,14 +52,6 @@ interface CreateSessionRequest {
 	triggerEventId?: string;
 	/** Trigger context written to .proliferate/trigger-context.json in sandbox */
 	triggerContext?: Record<string, unknown>;
-
-	// SSH access (can be enabled on any session type)
-	sshOptions?: {
-		publicKeys: string[];
-		localPath?: string;
-		gitToken?: string;
-		envVars?: Record<string, string>;
-	};
 }
 
 /**
@@ -75,16 +60,10 @@ interface CreateSessionRequest {
 interface CreateSessionResponse {
 	sessionId: string;
 	configurationId: string;
-	status: "pending" | "starting" | "running";
+	status: "pending";
 	gatewayUrl: string;
 	hasSnapshot: boolean;
 	isNewConfiguration: boolean;
-	sandbox?: {
-		sandboxId: string;
-		previewUrl: string | null;
-		sshHost?: string;
-		sshPort?: number;
-	};
 }
 
 /**
@@ -121,27 +100,17 @@ export function createSessionsRouter(env: GatewayEnv, hubManager: HubManager): R
 			}
 
 			// Validate exactly one configuration option is provided
-			const configurationOptions = [
-				body.configurationId,
-				body.managedConfiguration,
-				body.cliConfiguration,
-			].filter(Boolean);
+			const configurationOptions = [body.configurationId, body.managedConfiguration].filter(
+				Boolean,
+			);
 			if (configurationOptions.length === 0) {
-				throw new ApiError(
-					400,
-					"One of configurationId, managedConfiguration, or cliConfiguration is required",
-				);
+				throw new ApiError(400, "One of configurationId or managedConfiguration is required");
 			}
 			if (configurationOptions.length > 1) {
 				throw new ApiError(
 					400,
-					"Only one of configurationId, managedConfiguration, or cliConfiguration can be provided",
+					"Only one of configurationId or managedConfiguration can be provided",
 				);
-			}
-
-			// Validate SSH options
-			if (body.sshOptions && !body.sshOptions.publicKeys?.length) {
-				throw new ApiError(400, "sshOptions.publicKeys is required when SSH is enabled");
 			}
 
 			logger.debug(
@@ -149,10 +118,8 @@ export function createSessionsRouter(env: GatewayEnv, hubManager: HubManager): R
 					orgId: organizationId.slice(0, 8),
 					sessionType: body.sessionType,
 					clientType: body.clientType,
-					sandboxMode: body.sandboxMode || "deferred",
 					hasIdempotencyKey: Boolean(req.header("Idempotency-Key")),
 					hasSnapshot: Boolean(body.snapshotId),
-					sshEnabled: Boolean(body.sshOptions),
 				},
 				"sessions.create.start",
 			);
@@ -210,11 +177,8 @@ export function createSessionsRouter(env: GatewayEnv, hubManager: HubManager): R
 			// Resolve configuration
 			const configurationResolutionOptions: ConfigurationResolutionOptions = {
 				organizationId,
-				provider,
-				userId: auth.userId,
 				configurationId: body.configurationId,
-				managedConfiguration: body.managedConfiguration,
-				cliConfiguration: body.cliConfiguration,
+				managedConfiguration: body.managedConfiguration ?? undefined,
 			};
 
 			logger.info({ orgId: organizationId.slice(0, 8) }, "Resolving configuration");
@@ -245,7 +209,6 @@ export function createSessionsRouter(env: GatewayEnv, hubManager: HubManager): R
 			const createSessionStartMs = Date.now();
 			const result = await createSession(
 				{
-					env,
 					provider,
 					organizationId,
 					configurationId: configuration.id,
@@ -253,22 +216,13 @@ export function createSessionsRouter(env: GatewayEnv, hubManager: HubManager): R
 					clientType: body.clientType,
 					userId: auth.userId,
 					snapshotId: body.snapshotId || configuration.snapshotId,
-					configurationStatus: configuration.status,
 					initialPrompt: body.initialPrompt,
 					title: body.title,
 					clientMetadata: body.clientMetadata,
 					agentConfig: body.agentConfig,
-					sandboxMode: body.sandboxMode,
 					automationId: body.automationId,
 					triggerId: body.triggerId,
 					triggerEventId: body.triggerEventId,
-					triggerContext: body.triggerContext,
-					sshOptions: body.sshOptions
-						? {
-								...body.sshOptions,
-								localPathHash: body.cliConfiguration?.localPathHash,
-							}
-						: undefined,
 				},
 				configuration.isNew,
 			);
@@ -279,7 +233,6 @@ export function createSessionsRouter(env: GatewayEnv, hubManager: HubManager): R
 					sessionId: result.sessionId.slice(0, 8),
 					status: result.status,
 					durationMs: createSessionDurationMs,
-					createdSandbox: Boolean(result.sandbox),
 					hasSnapshot: result.hasSnapshot,
 				},
 				"sessions.create.session.created",
@@ -300,7 +253,6 @@ export function createSessionsRouter(env: GatewayEnv, hubManager: HubManager): R
 				{
 					sessionId: result.sessionId.slice(0, 8),
 					status: result.status,
-					hasSandbox: Boolean(result.sandbox),
 				},
 				"Session created",
 			);
@@ -317,7 +269,6 @@ export function createSessionsRouter(env: GatewayEnv, hubManager: HubManager): R
 				gatewayUrl,
 				hasSnapshot: result.hasSnapshot,
 				isNewConfiguration: result.isNewConfiguration,
-				sandbox: result.sandbox,
 			};
 
 			if (idempotencyState) {

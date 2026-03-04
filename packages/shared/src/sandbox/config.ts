@@ -7,7 +7,7 @@
 
 import { env } from "@proliferate/environment/server";
 import { z } from "zod";
-import type { ConfigurationServiceCommand, ServiceCommand } from "../sandbox-provider";
+import type { ConfigurationServiceCommand, ServiceCommand } from "../providers/types";
 
 /**
  * Proliferate plugin for OpenCode.
