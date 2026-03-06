@@ -116,6 +116,30 @@ Migration and cleanup are lock/fencing-driven.
 
 References: `apps/gateway/src/operations/expiry/queue.ts`, `apps/gateway/src/hub/session/migration/migration-controller.ts`, `apps/gateway/src/operations/orphans/sweeper.ts`
 
+### Canonical Session Status Model (V2)
+Session status semantics are modeled as a single canonical object, persisted on `sessions`:
+
+- `sandbox_state`: `provisioning | running | paused | terminated | failed`
+- `agent_state`: `iterating | waiting_input | waiting_approval | done | errored`
+- `terminal_state`: `succeeded | failed | cancelled | null`
+- `state_reason`: normalized reason code (`manual_pause`, `inactivity`, `approval_required`, `orphaned`, `snapshot_failed`, `automation_completed`, billing reasons, etc.)
+- `state_updated_at`: timestamp for the most recent canonical transition
+
+This model replaces status interpretation based on mixed legacy fields (`status`, `runtime_status`, `operator_status`, `pause_reason`) for API consumers.
+
+Authoritative transition intent:
+
+| Trigger | Canonical state update |
+| --- | --- |
+| Runtime ready | `sandbox_state=running`, `agent_state=iterating`, `terminal_state=null`, `state_reason=null` |
+| Agent idle | `agent_state=waiting_input` |
+| Pending approval | `agent_state=waiting_approval`, `state_reason=approval_required` |
+| New prompt / resume work | `agent_state=iterating`, `state_reason=null` |
+| Pause (manual/idle/orphan/billing) | `sandbox_state=paused`, `agent_state=waiting_input`, `state_reason=<normalized_reason>` |
+| Success terminal | `sandbox_state=terminated`, `agent_state=done`, `terminal_state=succeeded` |
+| Failure terminal | `sandbox_state=failed`, `agent_state=errored`, `terminal_state=failed`, `state_reason=runtime_error\|snapshot_failed` |
+| Cancel terminal | `sandbox_state=terminated`, `agent_state=done`, `terminal_state=cancelled`, `state_reason=cancelled_by_user` |
+
 ### Gateway-Intercepted Tool Callbacks
 Intercepted tools execute through HTTP callbacks, not SSE interception.
 
@@ -193,6 +217,7 @@ References: `apps/gateway/src/hub/session-hub.test.ts`, `apps/gateway/src/api/pr
 5. For new managed configurations, fires a setup session with auto-generated prompt.
 6. Immediate sandbox boot now injects the same gateway callback env vars used by runtime resume (`SANDBOX_MCP_AUTH_TOKEN`, `PROLIFERATE_GATEWAY_URL`, `PROLIFERATE_SESSION_ID`) so intercepted tools (including `automation.complete`) work on first boot.
 7. Immediate sandbox boot persists provider expiry (`sandbox_expires_at`) on the initial session update, instead of waiting for a later runtime reconciliation pass.
+8. `created_by` is preserved from authenticated caller identity when available; headless automation/setup flows may persist `created_by = null` and are treated as system-created sessions in UI.
 
 **Scratch sessions** (no configuration):
 - `configurationId` is optional in `CreateSessionInputSchema`. When omitted, the oRPC path creates a **scratch session** with `configurationId: null`, `snapshotId: null`.
@@ -366,6 +391,7 @@ WHERE id = $session_id
 | `save_snapshot` | Connection | Triggers snapshot |
 | `run_auto_start` | userId required | Tests service commands |
 | `get_git_status` | Connection | Returns git status |
+| `get_git_diff` | Connection | Returns git diff for path/scope |
 | `git_create_branch` | Mutation auth | Creates branch |
 | `git_commit` | Mutation auth | Commits changes |
 | `git_push` | Mutation auth | Pushes to remote |
@@ -373,7 +399,9 @@ WHERE id = $session_id
 
 **Mutation auth**: Requires `userId` to match `session.created_by` (or `created_by` is null for headless sessions). Source: `session-hub.ts:assertCanMutateSession`.
 
-**Server → Client messages**: `status`, `message`, `token`, `text_part_complete`, `tool_start`, `tool_metadata`, `tool_end`, `message_complete`, `message_cancelled`, `error`, `snapshot_result`, `init`, `preview_url`, `git_status`, `git_result`, `auto_start_output`, `pong`.
+**Server → Client messages**: `status`, `message`, `token`, `text_part_complete`, `tool_start`, `tool_metadata`, `tool_end`, `message_complete`, `message_cancelled`, `error`, `snapshot_result`, `init`, `preview_url`, `git_status`, `git_diff`, `git_result`, `auto_start_output`, `pong`.
+
+**Boundary note**: WebSocket transport stays thin in `api/proliferate/ws/session/handler.ts` (parse + delegate only), and git read/write handling in hub delegates to workflow modules, including git diff parity via `session/workflows/git-workflow.ts`.
 
 ### 6.5 Session Migration — `Implemented`
 
@@ -474,11 +502,11 @@ Token verification chain: (1) User JWT (signed with `gatewayJwtSecret`), (2) Ser
 
 ### 6.10 Session UI Surfaces — `Implemented`
 
-**Session list rows** (`apps/web/src/components/sessions/session-card.tsx`): Enriched with Phase 2a telemetry. Active rows show `latestTask` as subtitle; idle rows show `latestTask` → `promptSnippet` fallback; completed/failed rows show outcome label + compact metrics + PR count. An outcome badge appears for non-"completed" outcomes. A `GitPullRequest` icon + count shows when `prUrls` is populated. Sessions list now includes a dedicated **Configuration** column (short `configurationId`, fallback "No config") rendered for every row on desktop widths. The row accepts an optional `onClick` prop — when provided, it fires the callback instead of navigating directly. The sessions page uses this to open the peek drawer; other pages (my-work) omit it and navigate to `/workspace/:id`.
+**Session list rows** (`apps/web/src/components/sessions/session-card.tsx`): Session list UI now uses a canonical `overallWorkState` (`working | needs_input | dormant | done`) derived from canonical session status + unread state. Rows navigate directly to `/workspace/:id` on click (no list-surface peek routing). Creator cells remain avatar-first with deterministic `System` fallback when no attributable user exists.
 
-**Session display helpers** (`apps/web/src/lib/session-display.ts`): Pure formatting functions: `formatActiveTime(seconds)`, `formatCompactMetrics({toolCalls, activeSeconds})`, `getOutcomeDisplay(outcome)`, `formatConfigurationLabel(configurationId)`, `parsePrUrl(url)`. Used across session list rows, peek drawer, and my-work pages.
+**Session display/state helpers** (`packages/shared/src/sessions/display-status.ts`, `apps/web/src/lib/sessions/overall-work-state.ts`, `apps/web/src/hooks/sessions/use-overall-work-state.ts`): Shared derivation layer for canonical overall work state, origin mapping, tab grouping, and urgency sorting. Session list surfaces consume these helpers to avoid duplicated status logic.
 
-**Session peek drawer** (`apps/web/src/components/sessions/session-peek-drawer.tsx`): URL-routable right-side sheet. Opened via `?peek=<sessionId>` query param on the sessions page (`apps/web/src/app/(command-center)/dashboard/sessions/page.tsx`). Content sections: header (title + status + outcome), initial prompt, sanitized summary markdown, PR links, metrics grid, timeline, and context (repo/branch/automation). Footer has "Enter Workspace" or "Resume Session" CTA. Uses `useSessionData(id)` for detail data (includes `initialPrompt`). The sessions page wraps its content in `<Suspense>` for `useSearchParams()`.
+**Session peek drawer** (`apps/web/src/components/sessions/session-peek-drawer.tsx`): Detail sheet component remains available for direct composition, but sessions list surfaces no longer wire it through `?peek=<sessionId>` query params.
 
 **Coding session thread status banner** (`apps/web/src/components/coding-session/thread.tsx`, `apps/web/src/components/coding-session/runtime/use-session-websocket.ts`): When gateway sends `status` with a non-empty `message` (including long-task heartbeat updates), the thread renders an inline progress banner above the composer; it clears when tool output resumes (`tool_metadata` / `tool_end`) or the assistant turn completes.
 

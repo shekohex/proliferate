@@ -14,8 +14,16 @@ import {
 	isValidWorkerRunTransition,
 	isValidWorkerTransition,
 } from "@proliferate/shared/contracts/workers";
+import {
+	TemplateIntegrationBindingMismatchError,
+	TemplateIntegrationInactiveError,
+	TemplateIntegrationNotFoundError,
+	TemplateNotFoundError,
+} from "../automations/errors";
+import { findForBindingValidation } from "../integrations/service";
 import { getServicesLogger } from "../logger";
 import * as sessionsDb from "../sessions/db";
+import { getTemplateById } from "../templates/catalog";
 import type { WakeEventRow } from "../wakes/db";
 import * as wakesDb from "../wakes/db";
 import { buildMergedWakePayload, extractWakeDedupeKey } from "../wakes/mapper";
@@ -138,6 +146,13 @@ export interface WorkerCapability {
 	origin: string | null;
 }
 
+export interface CreateWorkerFromTemplateInput {
+	organizationId: string;
+	createdBy: string;
+	templateId: string;
+	integrationBindings: Record<string, string>;
+}
+
 function normalizeWorkerCapabilities(
 	capabilities: CoworkerCapabilityInput[] | undefined,
 ): CoworkerCapabilityInput[] {
@@ -224,6 +239,7 @@ export async function createWorkerWithManagerSession(input: {
 	repoId?: string;
 	configurationId?: string;
 	capabilities?: CoworkerCapabilityInput[];
+	integrationIds?: string[];
 }): Promise<WorkerDetail> {
 	const name = input.name || "Untitled coworker";
 
@@ -257,8 +273,66 @@ export async function createWorkerWithManagerSession(input: {
 	});
 
 	await applyWorkerCapabilities(worker.managerSessionId, input.capabilities);
+	await applyWorkerIntegrationBindings(worker.managerSessionId, input.integrationIds);
 
 	return toWorkerDetail(worker);
+}
+
+export async function createWorkerFromTemplate(
+	input: CreateWorkerFromTemplateInput,
+): Promise<WorkerDetail> {
+	const template = getTemplateById(input.templateId);
+	if (!template) {
+		throw new TemplateNotFoundError(input.templateId);
+	}
+
+	await validateIntegrationBindings(input.organizationId, input.integrationBindings);
+
+	return createWorkerWithManagerSession({
+		organizationId: input.organizationId,
+		createdBy: input.createdBy,
+		name: template.name,
+		objective: template.agentInstructions,
+		modelId: template.modelId,
+		integrationIds: Object.values(input.integrationBindings).filter(Boolean),
+	});
+}
+
+async function applyWorkerIntegrationBindings(
+	managerSessionId: string,
+	integrationIds: string[] | undefined,
+): Promise<void> {
+	if (!integrationIds || integrationIds.length === 0) {
+		return;
+	}
+	const dedupedIntegrationIds = [...new Set(integrationIds)];
+	await sessionsDb.createSessionConnections(managerSessionId, dedupedIntegrationIds);
+}
+
+async function validateIntegrationBindings(
+	orgId: string,
+	bindings: Record<string, string>,
+): Promise<void> {
+	for (const [bindingKey, integrationId] of Object.entries(bindings)) {
+		if (!integrationId) continue;
+
+		const integration = await findForBindingValidation(integrationId, orgId);
+		if (!integration) {
+			throw new TemplateIntegrationNotFoundError(integrationId);
+		}
+
+		if (integration.status !== "active") {
+			throw new TemplateIntegrationInactiveError(integrationId, integration.status);
+		}
+
+		if (integration.integrationId !== bindingKey) {
+			throw new TemplateIntegrationBindingMismatchError(
+				integrationId,
+				integration.integrationId,
+				bindingKey,
+			);
+		}
+	}
 }
 
 export async function listWorkersForOrg(orgId: string): Promise<WorkerListEntry[]> {

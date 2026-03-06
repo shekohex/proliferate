@@ -10,9 +10,10 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
+import { OVERALL_WORK_STATE_DISPLAY } from "@/config/sessions";
+import { useOverallWorkState } from "@/hooks/sessions/use-overall-work-state";
 import { useSessionData } from "@/hooks/sessions/use-sessions";
 import {
-	DISPLAY_STATUS_CONFIG,
 	formatActiveTime,
 	getOutcomeDisplay,
 	isHttpsUrl,
@@ -20,7 +21,7 @@ import {
 } from "@/lib/display/session-display";
 import { cn } from "@/lib/display/utils";
 import type { Session } from "@proliferate/shared/contracts/sessions";
-import { deriveDisplayStatus, getBlockedReasonText } from "@proliferate/shared/sessions";
+import { getBlockedReasonText } from "@proliferate/shared/sessions";
 import { formatDistanceToNow } from "date-fns";
 import {
 	AlertTriangle,
@@ -41,8 +42,8 @@ interface SessionPeekDrawerProps {
 }
 
 function StatusBadge({ session }: { session: Session }) {
-	const displayStatus = deriveDisplayStatus(session.status, session.pauseReason);
-	const config = DISPLAY_STATUS_CONFIG[displayStatus];
+	const { overallWorkState } = useOverallWorkState(session);
+	const config = OVERALL_WORK_STATE_DISPLAY[overallWorkState];
 	const Icon = config.animated ? BlocksLoadingIcon : BlocksIcon;
 
 	return (
@@ -54,6 +55,13 @@ function StatusBadge({ session }: { session: Session }) {
 			{config.label}
 		</span>
 	);
+}
+
+function getBlockedReasonFromCanonical(session: Session): string | null {
+	const reason = session.status.reason;
+	if (!reason) return null;
+	const legacyStatus = reason === "suspended" ? "suspended" : "paused";
+	return getBlockedReasonText(reason, legacyStatus);
 }
 
 function Section({
@@ -76,9 +84,9 @@ function PeekDrawerContent({
 	pendingRunId,
 }: { session: Session; pendingRunId?: string | null }) {
 	const router = useRouter();
-	const displayStatus = deriveDisplayStatus(session.status, session.pauseReason);
-	const isResumable =
-		session.snapshotId != null && (displayStatus === "idle" || displayStatus === "paused");
+	const { overallWorkState } = useOverallWorkState(session);
+	const isResumable = session.snapshotId != null && overallWorkState === "dormant";
+	const blockedReason = getBlockedReasonFromCanonical(session);
 
 	const displayTitle =
 		session.title ||
@@ -113,10 +121,8 @@ function PeekDrawerContent({
 							{getOutcomeDisplay(session.outcome).label}
 						</span>
 					)}
-					{displayStatus === "blocked" && (
-						<SheetDescription>
-							{getBlockedReasonText(session.pauseReason, session.status)}
-						</SheetDescription>
+					{overallWorkState === "needs_input" && blockedReason && (
+						<SheetDescription>{blockedReason}</SheetDescription>
 					)}
 				</SheetHeader>
 

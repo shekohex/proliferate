@@ -202,6 +202,20 @@ export async function listByOrganizationEnriched(
 		conditions.push(eq(sessions.createdBy, filters.createdBy));
 	}
 
+	conditions.push(isNull(sessions.deletedAt));
+
+	if (!filters?.includeArchived) {
+		conditions.push(isNull(sessions.archivedAt));
+	}
+
+	conditions.push(
+		or(
+			eq(sessions.createdBy, userId),
+			eq(sessions.visibility, "org"),
+			sql`EXISTS (SELECT 1 FROM session_acl WHERE session_acl.session_id = ${sessions.id} AND session_acl.user_id = ${userId})`,
+		)!,
+	);
+
 	// Pending approval count subquery
 	const pendingApprovalCount = db
 		.select({
@@ -303,13 +317,22 @@ export async function findById(id: string, orgId: string): Promise<SessionWithRe
 /**
  * Get session by ID without org check (for status endpoint).
  */
-export async function findByIdNoOrg(id: string): Promise<Pick<SessionRow, "id" | "status"> | null> {
+export async function findByIdNoOrg(
+	id: string,
+): Promise<Pick<
+	SessionRow,
+	"id" | "sandboxState" | "agentState" | "terminalState" | "stateReason" | "stateUpdatedAt"
+> | null> {
 	const db = getDb();
 	const result = await db.query.sessions.findFirst({
 		where: eq(sessions.id, id),
 		columns: {
 			id: true,
-			status: true,
+			sandboxState: true,
+			agentState: true,
+			terminalState: true,
+			stateReason: true,
+			stateUpdatedAt: true,
 		},
 	});
 
@@ -991,7 +1014,7 @@ export async function findForMetering(sessionId: string): Promise<{
 	organizationId: string;
 	meteredThroughAt: Date | null;
 	startedAt: Date;
-	status: string;
+	sandboxState: string;
 } | null> {
 	const db = getDb();
 	const result = await db.query.sessions.findFirst({
@@ -1001,7 +1024,7 @@ export async function findForMetering(sessionId: string): Promise<{
 			organizationId: true,
 			meteredThroughAt: true,
 			startedAt: true,
-			status: true,
+			sandboxState: true,
 		},
 	});
 	return (
@@ -1011,7 +1034,7 @@ export async function findForMetering(sessionId: string): Promise<{
 					organizationId: string;
 					meteredThroughAt: Date | null;
 					startedAt: Date;
-					status: string;
+					sandboxState: string;
 			  }
 			| undefined) ?? null
 	);
@@ -1028,14 +1051,14 @@ export async function findAllRunningForMetering(): Promise<
 		sandboxProvider: string | null;
 		meteredThroughAt: Date | null;
 		startedAt: Date;
-		status: string;
+		sandboxState: string;
 		lastSeenAliveAt: Date | null;
 		aliveCheckFailures: number | null;
 	}[]
 > {
 	const db = getDb();
 	return db.query.sessions.findMany({
-		where: eq(sessions.status, "running"),
+		where: eq(sessions.sandboxState, "running"),
 		columns: {
 			id: true,
 			organizationId: true,
@@ -1043,7 +1066,7 @@ export async function findAllRunningForMetering(): Promise<
 			sandboxProvider: true,
 			meteredThroughAt: true,
 			startedAt: true,
-			status: true,
+			sandboxState: true,
 			lastSeenAliveAt: true,
 			aliveCheckFailures: true,
 		},
@@ -1055,7 +1078,7 @@ export async function findAllRunningForMetering(): Promise<
 			sandboxProvider: string | null;
 			meteredThroughAt: Date | null;
 			startedAt: Date;
-			status: string;
+			sandboxState: string;
 			lastSeenAliveAt: Date | null;
 			aliveCheckFailures: number | null;
 		}[]

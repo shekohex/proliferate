@@ -44,7 +44,7 @@ import {
 	TaskSessionValidationError,
 } from "./errors";
 import { requestTitleGeneration } from "./generate-title";
-import { toSession, toSessions } from "./mapper";
+import { toCanonicalStatus, toSession, toSessions } from "./mapper";
 
 // Re-export all session errors so existing consumers of this module keep working.
 export {
@@ -119,12 +119,7 @@ export async function getSession(id: string, orgId: string): Promise<Session | n
 export async function getSessionStatus(id: string): Promise<SessionStatus | null> {
 	const row = await sessionsDb.findByIdNoOrg(id);
 	if (!row) return null;
-
-	const status = row.status ?? "unknown";
-	return {
-		status,
-		isComplete: status === "stopped",
-	};
+	return toCanonicalStatus(row);
 }
 
 /**

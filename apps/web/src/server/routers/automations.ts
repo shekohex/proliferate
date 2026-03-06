@@ -7,7 +7,7 @@
 import { GATEWAY_URL } from "@/lib/infra/gateway";
 import { ORPCError } from "@orpc/server";
 import { env } from "@proliferate/environment/server";
-import { automations, orgs, runs, schedules, templates, workers } from "@proliferate/services";
+import { automations, orgs, runs, schedules, workers } from "@proliferate/services";
 import {
 	AutomationConnectionSchema,
 	AutomationEventDetailSchema,
@@ -153,22 +153,38 @@ export const automationsRouter = {
 				integrationBindings: z.record(z.string()),
 			}),
 		)
-		.output(z.object({ automation: AutomationListItemSchema }))
+		.output(
+			z.object({
+				worker: z.object({
+					id: z.string().uuid(),
+					name: z.string(),
+					status: z.string(),
+					objective: z.string().nullable(),
+					modelId: z.string().nullable(),
+					managerSessionId: z.string().uuid(),
+				}),
+			}),
+		)
 		.handler(async ({ input, context }) => {
-			// Validate template exists before hitting the service
-			const template = templates.getTemplateById(input.templateId);
-			if (!template) {
-				throw new ORPCError("NOT_FOUND", { message: "Template not found" });
-			}
-
 			try {
-				const automation = await automations.createFromTemplate(context.orgId, context.user.id, {
+				const worker = await workers.createWorkerFromTemplate({
+					organizationId: context.orgId,
+					createdBy: context.user.id,
 					templateId: input.templateId,
 					integrationBindings: input.integrationBindings,
 				});
-				return { automation };
+				return {
+					worker: {
+						id: worker.id,
+						name: worker.name,
+						status: worker.status,
+						objective: worker.objective,
+						modelId: worker.modelId,
+						managerSessionId: worker.managerSessionId,
+					},
+				};
 			} catch (err) {
-				throwAutomationORPCError(err, "Failed to create automation from template");
+				throwAutomationORPCError(err, "Failed to create worker from template");
 			}
 		}),
 

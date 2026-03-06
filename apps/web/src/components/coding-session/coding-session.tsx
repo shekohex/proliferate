@@ -8,7 +8,6 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { INVESTIGATION_TAB, MANAGER_PANEL_TABS, PANEL_TABS } from "@/config/coding-session";
 import { useRepo } from "@/hooks/org/use-repos";
-import { useBackgroundVscodeStart } from "@/hooks/sessions/use-background-vscode";
 import { useCodingSessionRuntime } from "@/hooks/sessions/use-coding-session-runtime";
 import { useConfiguration } from "@/hooks/sessions/use-configurations";
 import {
@@ -21,6 +20,7 @@ import { startSnapshotProgressToast } from "@/lib/display/snapshot-progress-toas
 import { cn } from "@/lib/display/utils";
 import { usePreviewPanelStore } from "@/stores/preview-panel";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import { deriveOverallWorkState } from "@proliferate/shared/sessions";
 import { ArrowLeft, ArrowRightLeft, MoreHorizontal, Pin } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -47,12 +47,22 @@ interface CodingSessionProps {
 }
 
 const PANEL_SIZE_EPSILON = 0.1;
+const CHAT_PANEL_MIN = 25;
+const CHAT_PANEL_MAX = 65;
+const TOOL_PANEL_MIN = 35;
+const TOOL_PANEL_MAX = 75;
 
 function panelSizesAreEqual(current: number[], next: number[]) {
 	return (
 		current.length === next.length &&
 		current.every((value, index) => Math.abs(value - next[index]) <= PANEL_SIZE_EPSILON)
 	);
+}
+
+function normalizeDesktopPanelSizes(chatCandidate: number): [number, number] {
+	const chat = Math.max(CHAT_PANEL_MIN, Math.min(CHAT_PANEL_MAX, chatCandidate));
+	const tool = 100 - chat;
+	return [chat, tool];
 }
 
 export function CodingSession({
@@ -88,7 +98,9 @@ export function CodingSession({
 		sendRunAutoStart,
 		gitState,
 		gitResult,
+		gitDiff,
 		sendGetGitStatus,
+		sendGetGitDiff,
 		sendGitCreateBranch,
 		sendGitCommit,
 		sendGitPush,
@@ -104,11 +116,8 @@ export function CodingSession({
 		initialTitle: sessionData?.title ?? null,
 	});
 
-	// Start VS Code server in the background as soon as the session connects
-	useBackgroundVscodeStart(sessionId, wsToken);
-
 	const snapshotSession = useSnapshotSession();
-	const canSnapshot = sessionData?.status === "running" && !!sessionData?.sandboxId;
+	const canSnapshot = sessionData?.status.sandboxState === "running" && !!sessionData?.sandboxId;
 	const handleSnapshot = async () => {
 		const progressToast = startSnapshotProgressToast();
 		try {
@@ -134,24 +143,42 @@ export function CodingSession({
 		setPanelSizes,
 		panelSide,
 		setPanelSide,
-		missingEnvKeyCount,
 	} = usePreviewPanelStore();
 	const [viewPickerOpen, setViewPickerOpen] = useState(false);
 	const [isPanelDragging, setIsPanelDragging] = useState(false);
-	const shouldDebugPanelLayout =
-		typeof window !== "undefined" && window.location.search.includes("debugPanelLayout=1");
+	const latestDesktopPanelSizesRef = useRef<number[] | null>(null);
+
+	const startDesktopPanelDrag = useCallback(() => {
+		setIsPanelDragging((current) => {
+			if (current) return current;
+			return true;
+		});
+	}, []);
 
 	// Disable iframe pointer events during panel resize drag
 	useEffect(() => {
 		if (!isPanelDragging) return;
 		document.body.classList.add("panel-resizing");
 		const onMouseUp = () => setIsPanelDragging(false);
+		const onPointerUp = () => setIsPanelDragging(false);
 		window.addEventListener("mouseup", onMouseUp);
+		window.addEventListener("pointerup", onPointerUp);
 		return () => {
 			document.body.classList.remove("panel-resizing");
 			window.removeEventListener("mouseup", onMouseUp);
+			window.removeEventListener("pointerup", onPointerUp);
 		};
 	}, [isPanelDragging]);
+
+	useEffect(() => {
+		if (isPanelDragging) return;
+		const pending = latestDesktopPanelSizesRef.current;
+		if (!pending) return;
+		if (panelSizesAreEqual(panelSizes, pending)) return;
+
+		setPanelSizes(pending);
+		latestDesktopPanelSizesRef.current = null;
+	}, [isPanelDragging, panelSizes, setPanelSizes]);
 	const activeType = mode.type === "file" || mode.type === "gallery" ? "artifacts" : mode.type;
 
 	// Auto-open investigation panel when runId is present (fires once per runId)
@@ -175,7 +202,14 @@ export function CodingSession({
 	// Combine all loading states
 	const isLoading =
 		authLoading || sessionLoading || status === "loading" || status === "connecting";
-	const isSessionCreating = sessionData?.status === "starting" && !sessionData?.sandboxId;
+	const isSessionCreating =
+		sessionData?.status.sandboxState === "provisioning" && !sessionData?.sandboxId;
+	const overallWorkState = sessionData
+		? deriveOverallWorkState(
+				sessionData.status,
+				sessionData.hasUnreadUpdate ?? sessionData.unread ?? false,
+			)
+		: null;
 
 	const workspaceOptions = useMemo(() => {
 		const repoLinks = configurationData?.configurationRepos ?? [];
@@ -205,7 +239,7 @@ export function CodingSession({
 		? {
 				sessionId,
 				activityTick,
-				sessionStatus: sessionData.status ?? undefined,
+				sessionStatus: sessionData.status.sandboxState ?? undefined,
 				repoId: sessionData.repoId,
 				configurationId: sessionData.configurationId,
 				repoName: repoData?.githubRepoName || sessionData.repo?.githubRepoName,
@@ -222,7 +256,9 @@ export function CodingSession({
 				sendRunAutoStart,
 				gitState,
 				gitResult,
+				gitDiff,
 				sendGetGitStatus,
+				sendGetGitDiff,
 				sendGitCreateBranch,
 				sendGitCommit,
 				sendGitPush,
@@ -312,9 +348,7 @@ export function CodingSession({
 				sessionState={{
 					sessionId,
 					status: sessionData.status,
-					runtimeStatus: sessionData.runtimeStatus,
-					operatorStatus: sessionData.operatorStatus,
-					pauseReason: sessionData.pauseReason,
+					overallWorkState: overallWorkState ?? "working",
 					outcome: sessionData.outcome,
 					workerId: sessionData.workerId,
 				}}
@@ -325,11 +359,9 @@ export function CodingSession({
 	const isReady = !isLoading && !!authSession && !!sessionData && status !== "error";
 	const isSetupSession = sessionData?.sessionType === "setup";
 
-	useEffect(() => {
-		if (isSetupSession && !pinnedTabs.includes("environment")) {
-			pinTab("environment");
-		}
-	}, [isSetupSession, pinTab, pinnedTabs]);
+	const repoSettingsHref = sessionData?.repoId
+		? `/settings/repositories/${sessionData.repoId}`
+		: "/settings/repositories";
 
 	const panelViewPicker = (
 		<div className="flex items-center gap-0.5">
@@ -353,11 +385,6 @@ export function CodingSession({
 					>
 						<tab.icon className="h-3.5 w-3.5" />
 						<span className="hidden lg:inline">{tab.label}</span>
-						{tab.type === "environment" && missingEnvKeyCount > 0 && (
-							<span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
-								{missingEnvKeyCount}
-							</span>
-						)}
 					</Button>
 				);
 			})}
@@ -367,7 +394,7 @@ export function CodingSession({
 						<MoreHorizontal className="h-3.5 w-3.5" />
 					</Button>
 				</PopoverTrigger>
-				<PopoverContent align="start" sideOffset={8} className="w-48 p-1">
+				<PopoverContent align="start" sideOffset={8} className="w-56 p-1">
 					{effectivePanelTabs.map(({ type, label, icon: Icon }) => {
 						const isActive = activeType === type;
 						const isPinned = pinnedTabs.includes(type);
@@ -407,6 +434,16 @@ export function CodingSession({
 							</div>
 						);
 					})}
+					<div className="my-1 border-t border-border" />
+					<Button
+						asChild
+						variant="ghost"
+						size="sm"
+						className="h-8 w-full justify-start px-2.5 text-sm font-normal"
+						onClick={() => setViewPickerOpen(false)}
+					>
+						<Link href={repoSettingsHref}>Open repository settings</Link>
+					</Button>
 				</PopoverContent>
 			</Popover>
 		</div>
@@ -487,44 +524,30 @@ export function CodingSession({
 
 	const handleDesktopLayoutChanged = useCallback(
 		(layout: unknown) => {
-			const sizes = Array.isArray(layout)
-				? layout
-				: Object.values(layout as Record<string, number>);
-			if (sizes.length < 2) return;
-			const nextPanelSizes =
-				panelSide === "left"
-					? [Number(sizes[1]), Number(sizes[0])]
-					: [Number(sizes[0]), Number(sizes[1])];
+			const recordLayout = Array.isArray(layout) ? null : (layout as Record<string, number>);
+			const chatRaw =
+				recordLayout && Number.isFinite(Number(recordLayout["workspace-chat-panel"]))
+					? Number(recordLayout["workspace-chat-panel"])
+					: Array.isArray(layout) && layout.length >= 2
+						? panelSide === "left"
+							? Number(layout[1])
+							: Number(layout[0])
+						: Number.NaN;
+			if (!Number.isFinite(chatRaw)) return;
+			const nextPanelSizes = normalizeDesktopPanelSizes(chatRaw);
+			if (panelSizesAreEqual(panelSizes, nextPanelSizes)) return;
 
-			if (panelSizesAreEqual(panelSizes, nextPanelSizes)) {
-				if (shouldDebugPanelLayout) {
-					console.debug("[coding-session] skipping redundant panel size update", {
-						panelSide,
-						panelSizes,
-						nextPanelSizes,
-					});
-				}
-				return;
-			}
-
-			if (shouldDebugPanelLayout) {
-				console.debug("[coding-session] applying panel size update", {
-					panelSide,
-					panelSizes,
-					nextPanelSizes,
-				});
-			}
-
-			setPanelSizes(nextPanelSizes);
+			latestDesktopPanelSizesRef.current = nextPanelSizes;
 		},
-		[panelSide, panelSizes, setPanelSizes, shouldDebugPanelLayout],
+		[panelSide, panelSizes],
 	);
 
 	const chatPane = (
 		<ResizablePanel
+			id="workspace-chat-panel"
 			defaultSize={panelSizes[0] || 35}
-			minSize={25}
-			maxSize={65}
+			minSize={CHAT_PANEL_MIN}
+			maxSize={CHAT_PANEL_MAX}
 			className="flex flex-col"
 		>
 			{chatHeader}
@@ -538,23 +561,24 @@ export function CodingSession({
 		: sessionData
 			? deriveWorkspaceState({
 					status: sessionData.status,
+					overallWorkState,
 					outcome: sessionData.outcome,
-					pauseReason: sessionData.pauseReason,
 					sandboxId: sessionData.sandboxId,
 				})
 			: "running";
 
 	const toolPane = (
 		<ResizablePanel
+			id="workspace-tool-panel"
 			defaultSize={panelSizes[1] || 65}
-			minSize={35}
-			maxSize={75}
+			minSize={TOOL_PANEL_MIN}
+			maxSize={TOOL_PANEL_MAX}
 			className="flex flex-col"
 		>
 			{panelTabsHeader}
 			<WorkspaceStateBanner
 				state={bannerState}
-				pauseReason={workspaceState?.pauseReason ?? sessionData?.pauseReason}
+				pauseReason={workspaceState?.pauseReason ?? sessionData?.status.reason}
 				outcome={workspaceState?.outcome ?? sessionData?.outcome}
 				errorCode={workspaceState?.errorCode}
 				sandboxAvailable={workspaceState?.sandboxAvailable ?? !!sessionData?.sandboxId}
@@ -584,13 +608,29 @@ export function CodingSession({
 			{panelSide === "left" ? (
 				<>
 					{toolPane}
-					<ResizableHandle withHandle onMouseDown={() => setIsPanelDragging(true)} />
+					<ResizableHandle
+						withHandle
+						onPointerDown={() => {
+							startDesktopPanelDrag();
+						}}
+						onMouseDown={() => {
+							startDesktopPanelDrag();
+						}}
+					/>
 					{chatPane}
 				</>
 			) : (
 				<>
 					{chatPane}
-					<ResizableHandle withHandle onMouseDown={() => setIsPanelDragging(true)} />
+					<ResizableHandle
+						withHandle
+						onPointerDown={() => {
+							startDesktopPanelDrag();
+						}}
+						onMouseDown={() => {
+							startDesktopPanelDrag();
+						}}
+					/>
 					{toolPane}
 				</>
 			)}
