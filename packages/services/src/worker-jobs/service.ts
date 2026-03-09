@@ -4,7 +4,6 @@
  * Business rules around scheduled check-in prompts for coworkers.
  */
 
-import { CronExpressionParser } from "cron-parser";
 import { getServicesLogger } from "../logger";
 import * as workersDb from "../workers/db";
 import type { WorkerJobRow } from "./db";
@@ -12,6 +11,7 @@ import * as workerJobsDb from "./db";
 import { WorkerJobNotFoundError, WorkerJobValidationError } from "./errors";
 
 export { WorkerJobNotFoundError, WorkerJobValidationError } from "./errors";
+export { SYSTEM_JOB_TICK_USER_ID } from "@proliferate/shared/contracts/workers";
 
 const logger = getServicesLogger().child({ module: "worker-jobs" });
 
@@ -78,14 +78,56 @@ function toJobDetail(row: WorkerJobRow): WorkerJobDetail {
 }
 
 /**
- * Validates a cron expression using cron-parser.
+ * Cron expression validation.
  * Accepts standard 5-field cron expressions (minute hour dom month dow).
+ * Validates field count and per-field value ranges.
  */
 function validateCronExpression(expr: string): void {
-	try {
-		CronExpressionParser.parse(expr);
-	} catch {
-		throw new WorkerJobValidationError(`Invalid cron expression: "${expr}"`);
+	const parts = expr.trim().split(/\s+/);
+	if (parts.length !== 5) {
+		throw new WorkerJobValidationError(
+			`Invalid cron expression: expected 5 fields, got ${parts.length}`,
+		);
+	}
+	const fieldRules: [string, number, number][] = [
+		["minute", 0, 59],
+		["hour", 0, 23],
+		["day of month", 1, 31],
+		["month", 1, 12],
+		["day of week", 0, 7],
+	];
+	for (let i = 0; i < 5; i++) {
+		const [name, min, max] = fieldRules[i];
+		const field = parts[i];
+		if (field === "*") continue;
+		// Handle step values like */5, ranges like 1-5, and lists like 1,3,5
+		const segments = field.split(",");
+		for (const seg of segments) {
+			const stepParts = seg.split("/");
+			const rangePart = stepParts[0];
+
+			// Validate step value regardless of whether range is "*" or explicit
+			if (stepParts[1] !== undefined) {
+				const step = Number(stepParts[1]);
+				if (!Number.isInteger(step) || step < 1) {
+					throw new WorkerJobValidationError(
+						`Invalid cron field '${name}': step value '${stepParts[1]}' must be a positive integer`,
+					);
+				}
+			}
+
+			if (rangePart === "*") continue; // bounds check not needed for wildcard
+
+			const bounds = rangePart.split("-");
+			for (const bound of bounds) {
+				const num = Number(bound);
+				if (!Number.isInteger(num) || num < min || num > max) {
+					throw new WorkerJobValidationError(
+						`Invalid cron field '${name}': value '${bound}' is out of range (${min}-${max})`,
+					);
+				}
+			}
+		}
 	}
 }
 
@@ -163,7 +205,7 @@ export async function listJobsForWorker(
 		throw new WorkerJobValidationError(`Worker not found: ${workerId}`);
 	}
 
-	const rows = await workerJobsDb.listJobsForWorker(workerId);
+	const rows = await workerJobsDb.listJobsForWorker(workerId, organizationId);
 	return rows.map(toJobDetail);
 }
 
@@ -186,4 +228,16 @@ export async function updateLastTick(
 		throw new WorkerJobNotFoundError(jobId);
 	}
 	return toJobDetail(row);
+}
+
+/** Alias for tick processor compatibility. */
+export const updateJobTickTimestamps = updateLastTick;
+
+/**
+ * List all enabled jobs across all organizations.
+ * Used by the tick scheduler to sync BullMQ repeatable jobs.
+ */
+export async function listAllEnabledJobs(): Promise<WorkerJobDetail[]> {
+	const rows = await workerJobsDb.listAllEnabledJobs();
+	return rows.map(toJobDetail);
 }

@@ -32,6 +32,21 @@ export function WorkerChatTab({ managerSessionId, workerStatus }: WorkerChatTabP
 		}
 	}, [messages]);
 
+	// Auto-wake: eager-start the manager session on mount.
+	// Note: eagerStart requires service auth and will fail with a user token.
+	// The session still wakes on WebSocket connect, so this is a best-effort
+	// optimization that is silently ignored if it errors.
+	useEffect(() => {
+		if (!token || !managerSessionId) return;
+		const client = createSyncClient({
+			baseUrl: GATEWAY_URL,
+			auth: { type: "token", token },
+			source: "web",
+		});
+		// biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fire-and-forget
+		client.eagerStart(managerSessionId).catch(() => {});
+	}, [token, managerSessionId]);
+
 	// WebSocket connection
 	useEffect(() => {
 		if (!token || !managerSessionId) return;

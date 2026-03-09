@@ -124,6 +124,8 @@ export async function transitionWorkerStatus(
 	fromStatuses: WorkerStatus[],
 	toStatus: WorkerStatus,
 	fields?: {
+		lastWakeAt?: Date;
+		lastCompletedRunAt?: Date;
 		lastErrorCode?: string | null;
 		pausedAt?: Date | null;
 		pausedBy?: string | null;
@@ -442,6 +444,8 @@ export async function consumeWakeEvent(
 	return row;
 }
 
+// touchWorkerLastWake removed — lastWakeAt column dropped in Coworker V2
+
 export async function insertWakeStartedEvent(
 	tx: DbTransaction,
 	workerRunId: string,
@@ -705,24 +709,6 @@ export async function listSessionsByWorker(
 		)
 		.orderBy(desc(sessions.startedAt))
 		.limit(limit);
-}
-
-export async function listChildSessionsByWorkerRun(
-	workerRunId: string,
-	orgId: string,
-): Promise<SessionRow[]> {
-	const db = getDb();
-	return db
-		.select()
-		.from(sessions)
-		.where(
-			and(
-				eq(sessions.workerRunId, workerRunId),
-				eq(sessions.organizationId, orgId),
-				eq(sessions.kind, "task"),
-			),
-		)
-		.orderBy(desc(sessions.startedAt));
 }
 
 export async function listPendingDirectives(

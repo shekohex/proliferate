@@ -36,12 +36,24 @@ export async function findJobById(
 	return row;
 }
 
-export async function listJobsForWorker(workerId: string): Promise<WorkerJobRow[]> {
+/**
+ * List all enabled jobs across all organizations.
+ * Used by the tick scheduler to sync BullMQ repeatable jobs.
+ */
+export async function listAllEnabledJobs(): Promise<WorkerJobRow[]> {
+	const db = getDb();
+	return db.select().from(workerJobs).where(eq(workerJobs.enabled, true));
+}
+
+export async function listJobsForWorker(
+	workerId: string,
+	organizationId: string,
+): Promise<WorkerJobRow[]> {
 	const db = getDb();
 	return db
 		.select()
 		.from(workerJobs)
-		.where(eq(workerJobs.workerId, workerId))
+		.where(and(eq(workerJobs.workerId, workerId), eq(workerJobs.organizationId, organizationId)))
 		.orderBy(desc(workerJobs.createdAt));
 }
 
