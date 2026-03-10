@@ -19,9 +19,10 @@
 		"@proliferate/logger": "workspace:*",
 		"@proliferate/queue": "workspace:*",
 		"@proliferate/services": "workspace:*",
-		"@proliferate/triggers": "workspace:*",
 		"@proliferate/shared": "workspace:*",
+		"@proliferate/triggers": "workspace:*",
 		"bullmq": "^5.30.1",
+		"e2b": "^2.14.1",
 		"ioredis": "^5.4.1",
 		"slackify-markdown": "^5.0.0",
 		"ws": "^8.18.0"

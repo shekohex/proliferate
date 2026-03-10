@@ -25,6 +25,8 @@ export const QUEUE_NAMES = {
 	BILLING_FAST_RECONCILE: "billing-fast-reconcile",
 	BILLING_PARTITION_MAINTENANCE: "billing-partition-maintenance",
 	SESSION_TITLE_GENERATION: "session-title-generation",
+	SNAPSHOT_REFRESH_TICK: "snapshot-refresh-tick",
+	SNAPSHOT_REFRESH: "snapshot-refresh",
 	TICK: "tick",
 	WORKER_JOB_TICKS: "worker-job-ticks",
 } as const;
@@ -187,6 +189,14 @@ export interface SessionTitleGenerationJob {
 	sessionId: string;
 	orgId: string;
 	prompt: string;
+}
+
+/** Repeatable tick job that fans out individual snapshot refresh jobs. */
+export type SnapshotRefreshTickJob = Record<string, never>;
+
+/** Job to refresh a single configuration's snapshot (git pull + install + re-snapshot). */
+export interface SnapshotRefreshJob {
+	configurationId: string;
 }
 
 // ============================================
@@ -464,6 +474,34 @@ const sessionTitleGenerationJobOptions: JobsOptions = {
 	},
 };
 
+const snapshotRefreshTickJobOptions: JobsOptions = {
+	attempts: 1,
+	removeOnComplete: {
+		age: 3600, // 1 hour
+		count: 100,
+	},
+	removeOnFail: {
+		age: 86400, // 24 hours
+		count: 100,
+	},
+};
+
+const snapshotRefreshJobOptions: JobsOptions = {
+	attempts: 2,
+	backoff: {
+		type: "exponential",
+		delay: 10000, // 10s — snapshot refresh involves sandbox boot
+	},
+	removeOnComplete: {
+		age: 86400, // 24 hours
+		count: 100,
+	},
+	removeOnFail: {
+		age: 604800, // 7 days
+		count: 100,
+	},
+};
+
 // ============================================
 // Queue Factories
 // ============================================
@@ -686,6 +724,56 @@ export function createSessionTitleGenerationWorker(
 	return new Worker<SessionTitleGenerationJob>(QUEUE_NAMES.SESSION_TITLE_GENERATION, processor, {
 		connection: connection ?? getConnectionOptions(),
 		concurrency: 3,
+	});
+}
+
+/**
+ * Create the snapshot refresh tick queue (repeatable fan-out)
+ */
+export function createSnapshotRefreshTickQueue(
+	connection?: ConnectionOptions,
+): Queue<SnapshotRefreshTickJob> {
+	return new Queue<SnapshotRefreshTickJob>(QUEUE_NAMES.SNAPSHOT_REFRESH_TICK, {
+		connection: connection ?? getConnectionOptions(),
+		defaultJobOptions: snapshotRefreshTickJobOptions,
+	});
+}
+
+/**
+ * Create a worker for snapshot refresh tick jobs
+ */
+export function createSnapshotRefreshTickWorker(
+	processor: (job: Job<SnapshotRefreshTickJob>) => Promise<void>,
+	connection?: ConnectionOptions,
+): Worker<SnapshotRefreshTickJob> {
+	return new Worker<SnapshotRefreshTickJob>(QUEUE_NAMES.SNAPSHOT_REFRESH_TICK, processor, {
+		connection: connection ?? getConnectionOptions(),
+		concurrency: 1,
+	});
+}
+
+/**
+ * Create the snapshot refresh queue (individual config refresh)
+ */
+export function createSnapshotRefreshQueue(
+	connection?: ConnectionOptions,
+): Queue<SnapshotRefreshJob> {
+	return new Queue<SnapshotRefreshJob>(QUEUE_NAMES.SNAPSHOT_REFRESH, {
+		connection: connection ?? getConnectionOptions(),
+		defaultJobOptions: snapshotRefreshJobOptions,
+	});
+}
+
+/**
+ * Create a worker for snapshot refresh jobs
+ */
+export function createSnapshotRefreshWorker(
+	processor: (job: Job<SnapshotRefreshJob>) => Promise<void>,
+	connection?: ConnectionOptions,
+): Worker<SnapshotRefreshJob> {
+	return new Worker<SnapshotRefreshJob>(QUEUE_NAMES.SNAPSHOT_REFRESH, processor, {
+		connection: connection ?? getConnectionOptions(),
+		concurrency: 1,
 	});
 }
 

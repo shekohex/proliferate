@@ -3,7 +3,17 @@
  */
 
 import { relations } from "drizzle-orm";
-import { index, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+	boolean,
+	index,
+	integer,
+	jsonb,
+	pgTable,
+	primaryKey,
+	text,
+	timestamp,
+	uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { repos } from "./repos";
 
@@ -57,6 +67,11 @@ export const configurations = pgTable(
 			withTimezone: true,
 		}),
 		connectorsUpdatedBy: text("connectors_updated_by"),
+
+		// Snapshot refresh
+		refreshEnabled: boolean("refresh_enabled").default(false).notNull(),
+		refreshIntervalMinutes: integer("refresh_interval_minutes").default(360).notNull(),
+		lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
 
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 	},

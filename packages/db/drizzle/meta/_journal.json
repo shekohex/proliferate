@@ -396,6 +396,27 @@
       "when": 1772886400000,
       "tag": "0057_coworker_v2_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1772972800000,
+      "tag": "0058_optimize_chat_history_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1773059200000,
+      "tag": "0059_worker_slack_channel",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1773145600000,
+      "tag": "0060_snapshot_refresh",
+      "breakpoints": true
     }
   ]
 }

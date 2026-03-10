@@ -13,9 +13,13 @@ import {
 	eq,
 	getDb,
 	inArray,
+	isNotNull,
 	isNull,
+	lt,
+	or,
 	repos,
 	type sessions,
+	sql,
 } from "../db/client";
 import type {
 	CreateConfigurationFullInput,
@@ -917,5 +921,90 @@ export async function markConfigurationSnapshotFailed(
 	await db
 		.update(configurations)
 		.set({ status: "failed", error })
+		.where(eq(configurations.id, configurationId));
+}
+
+// ============================================
+// Snapshot Refresh Operations
+// ============================================
+
+/** Configuration due for snapshot refresh */
+export interface ConfigurationDueForRefreshRow {
+	id: string;
+	snapshotId: string;
+	sandboxProvider: string | null;
+	refreshIntervalMinutes: number;
+	configurationRepos: Array<{
+		workspacePath: string;
+		repo: {
+			id: string;
+			githubUrl: string;
+			githubRepoName: string;
+			defaultBranch: string | null;
+			organizationId: string;
+			isPrivate: boolean | null;
+		} | null;
+	}>;
+}
+
+/**
+ * List configurations that are due for snapshot refresh.
+ * Criteria: refresh_enabled=true, status='ready', snapshot_id IS NOT NULL,
+ * and last_refreshed_at is either null or older than the configured interval.
+ */
+export async function listDueForRefresh(): Promise<ConfigurationDueForRefreshRow[]> {
+	const db = getDb();
+	const results = await db.query.configurations.findMany({
+		where: and(
+			eq(configurations.refreshEnabled, true),
+			eq(configurations.status, "ready"),
+			isNotNull(configurations.snapshotId),
+			or(
+				isNull(configurations.lastRefreshedAt),
+				lt(
+					configurations.lastRefreshedAt,
+					sql`now() - (configurations.refresh_interval_minutes || ' minutes')::interval`,
+				),
+			),
+		),
+		columns: {
+			id: true,
+			snapshotId: true,
+			sandboxProvider: true,
+			refreshIntervalMinutes: true,
+		},
+		with: {
+			configurationRepos: {
+				with: {
+					repo: {
+						columns: {
+							id: true,
+							githubUrl: true,
+							githubRepoName: true,
+							defaultBranch: true,
+							organizationId: true,
+							isPrivate: true,
+						},
+					},
+				},
+			},
+		},
+	});
+
+	return results as unknown as ConfigurationDueForRefreshRow[];
+}
+
+/**
+ * Mark a configuration as refreshed with a new snapshot.
+ * Atomically updates snapshotId + lastRefreshedAt.
+ */
+export async function markRefreshed(configurationId: string, newSnapshotId: string): Promise<void> {
+	const db = getDb();
+	await db
+		.update(configurations)
+		.set({
+			snapshotId: newSnapshotId,
+			lastRefreshedAt: new Date(),
+		})
 		.where(eq(configurations.id, configurationId));
 }

@@ -361,6 +361,9 @@ export const configurations = pgTable(
 			mode: "date",
 		}),
 		connectorsUpdatedBy: text("connectors_updated_by"),
+		refreshEnabled: boolean("refresh_enabled").default(false).notNull(),
+		refreshIntervalMinutes: integer("refresh_interval_minutes").default(360).notNull(),
+		lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true, mode: "date" }),
 	},
 	(table) => [
 		index("idx_configurations_sandbox_provider").using(

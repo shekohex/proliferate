@@ -454,6 +454,7 @@ export type {
 	ConfigurationSnapshotBuildInfoRow,
 	ConfigurationCandidateRow,
 	ReadyConfigurationRow,
+	ConfigurationDueForRefreshRow,
 } from "./db";
 
 // Re-export input types
@@ -680,6 +681,20 @@ export async function getConfigurationCandidates(
  */
 export async function listAll(status?: string) {
 	return configurationsDb.listAll(status);
+}
+
+/**
+ * List configurations due for snapshot refresh.
+ */
+export async function listDueForRefresh() {
+	return configurationsDb.listDueForRefresh();
+}
+
+/**
+ * Mark a configuration as refreshed with a new snapshot.
+ */
+export async function markRefreshed(configurationId: string, newSnapshotId: string) {
+	return configurationsDb.markRefreshed(configurationId, newSnapshotId);
 }
 
 /**

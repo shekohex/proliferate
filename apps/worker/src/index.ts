@@ -38,6 +38,7 @@ import {
 import { SessionSubscriber } from "./pubsub";
 import { startSessionTitleWorkers, stopSessionTitleWorkers } from "./session-title";
 import { SlackClient } from "./slack";
+import { startSnapshotRefreshWorkers, stopSnapshotRefreshWorkers } from "./snapshot-refresh";
 import { startActionExpirySweeper, stopActionExpirySweeper } from "./sweepers";
 
 // Create root logger
@@ -113,6 +114,11 @@ const baseSnapshotWorkers = startBaseSnapshotWorkers(logger.child({ module: "bas
 // Session title generation worker
 const sessionTitleWorkers = startSessionTitleWorkers(logger.child({ module: "session-title" }));
 
+// Snapshot refresh worker
+const snapshotRefreshWorkers = startSnapshotRefreshWorkers(
+	logger.child({ module: "snapshot-refresh" }),
+);
+
 // Action invocation expiry sweeper
 startActionExpirySweeper(logger.child({ module: "action-expiry" }));
 
@@ -124,6 +130,7 @@ logger.info(
 		automationWorkers: ["enrich", "execute", "outbox", "finalizer"],
 		configurationSnapshotWorkers: ["build"],
 		baseSnapshotWorkers: ["build"],
+		snapshotRefreshWorkers: ["tick", "refresh"],
 	},
 	"Workers started",
 );
@@ -206,6 +213,7 @@ async function shutdown(): Promise<void> {
 		await stopBaseSnapshotWorkers(baseSnapshotWorkers);
 	}
 	await stopSessionTitleWorkers(sessionTitleWorkers);
+	await stopSnapshotRefreshWorkers(snapshotRefreshWorkers);
 
 	// Close Redis client
 	await closeRedisClient();
