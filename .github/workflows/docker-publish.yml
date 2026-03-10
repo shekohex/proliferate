@@ -1,8 +1,6 @@
 name: Stable Release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
@@ -48,8 +46,8 @@ jobs:
           VERSION_TAG: ${{ needs.prepare.outputs.version_tag }}
         run: |
           set -euo pipefail
-          git tag "$VERSION_TAG"
-          git push origin "$VERSION_TAG"
+          git tag -f "$VERSION_TAG"
+          git push origin "$VERSION_TAG" --force
 
   build-and-push:
     needs: [prepare, tag]
