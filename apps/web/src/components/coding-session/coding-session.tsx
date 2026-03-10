@@ -23,6 +23,7 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { deriveOverallWorkState } from "@proliferate/shared/sessions";
 import { ArrowLeft, ArrowRightLeft, MoreHorizontal, Pin } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionPanelProps } from "./right-panel";
 import { RightPanel } from "./right-panel";
@@ -76,6 +77,7 @@ export function CodingSession({
 	open = true,
 	onOpenChange,
 }: CodingSessionProps) {
+	const router = useRouter();
 	const { data: authSession, isPending: authLoading } = useBetterAuthSession();
 	const { data: sessionData, isLoading: sessionLoading } = useSessionData(sessionId);
 	const { data: repoData } = useRepo(sessionData?.repoId || "");
@@ -314,9 +316,6 @@ export function CodingSession({
 		sessionData ? (
 			<SessionLoadingShell
 				mode={isSessionCreating ? "creating" : "resuming"}
-				stage={
-					isSessionCreating ? (status === "connecting" ? "provisioning" : "preparing") : undefined
-				}
 				repoName={repoData?.githubRepoName || sessionData.repo?.githubRepoName}
 				showHeader={false}
 			/>
@@ -464,13 +463,16 @@ export function CodingSession({
 		<div className="shrink-0 flex items-center gap-2 h-12 px-3 border-b border-border/50">
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<Link href="/dashboard">
-						<Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-							<ArrowLeft className="h-4 w-4" />
-						</Button>
-					</Link>
+					<Button
+						variant="ghost"
+						size="icon"
+						className="h-8 w-8 shrink-0"
+						onClick={() => router.back()}
+					>
+						<ArrowLeft className="h-4 w-4" />
+					</Button>
 				</TooltipTrigger>
-				<TooltipContent side="bottom">Back to dashboard</TooltipContent>
+				<TooltipContent side="bottom">Back</TooltipContent>
 			</Tooltip>
 			<div className="h-5 w-px bg-border/60 shrink-0" />
 			<img

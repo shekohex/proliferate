@@ -22,7 +22,7 @@ export function useSessions(params?: {
 	const { enabled = true, refetchInterval, ...queryParams } = params ?? {};
 	return useQuery({
 		...orpc.sessions.list.queryOptions({
-			input: queryParams,
+			input: { ...queryParams, enriched: true },
 		}),
 		enabled,
 		refetchInterval:

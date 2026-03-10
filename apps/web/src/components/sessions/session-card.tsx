@@ -11,7 +11,8 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BlocksIcon, BlocksLoadingIcon, SlackIcon } from "@/components/ui/icons";
+import { Badge } from "@/components/ui/badge";
+import { BlocksIcon, BlocksLoadingIcon, GithubIcon, SlackIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { ItemActionsMenu } from "@/components/ui/item-actions-menu";
 import { OVERALL_WORK_STATE_DISPLAY, type OverallWorkStateDisplayConfig } from "@/config/sessions";
@@ -25,11 +26,12 @@ import {
 	useSubscribeNotifications,
 	useUnsubscribeNotifications,
 } from "@/hooks/sessions/use-sessions";
+import { parsePrUrl } from "@/lib/display/session-display";
 import { cn } from "@/lib/display/utils";
 import type { PendingRunSummary } from "@proliferate/shared/contracts/automations";
 import type { Session } from "@proliferate/shared/contracts/sessions";
 import { formatDistanceToNowStrict } from "date-fns";
-import { Bell, BellOff, Terminal } from "lucide-react";
+import { Bell, BellOff, GitPullRequestArrow, Settings, Terminal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -64,40 +66,6 @@ function formatCompactTimeAgo(date: Date): string {
 	return `${distance} ago`;
 }
 
-/**
- * Attention indicator dot based on operator status.
- */
-function AttentionCell({
-	pendingRun,
-	requiresHumanReview,
-}: {
-	pendingRun?: PendingRunSummary;
-	requiresHumanReview?: boolean;
-}) {
-	if (pendingRun) {
-		return (
-			<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-				<span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
-				Pending
-			</span>
-		);
-	}
-
-	if (requiresHumanReview) {
-		return (
-			<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-				<span className="h-1.5 w-1.5 rounded-full bg-warning shrink-0" />
-				Review
-			</span>
-		);
-	}
-
-	return null;
-}
-
-/**
- * Origin label for the table cell.
- */
 function OriginCell({ session }: { session: Session }) {
 	if (session.automationId && session.automation) {
 		return (
@@ -128,16 +96,39 @@ function OriginCell({ session }: { session: Session }) {
 	return <span className="text-xs text-muted-foreground">Ad-hoc</span>;
 }
 
-function RepoCell({ repoShortName }: { repoShortName: string | null }) {
+function RepoCell({
+	repoShortName,
+	prUrls,
+}: {
+	repoShortName: string | null;
+	prUrls: string[] | null | undefined;
+}) {
+	const firstPr = prUrls?.[0] ? parsePrUrl(prUrls[0]) : null;
+
 	return (
-		<span className="text-xs text-muted-foreground truncate block">
-			{repoShortName || "No repo"}
+		<span className="inline-flex items-center gap-1 text-xs text-muted-foreground truncate min-w-0">
+			{repoShortName ? (
+				<>
+					<GithubIcon className="h-3 w-3 shrink-0 -translate-y-px" />
+					<span className="truncate">{repoShortName}</span>
+				</>
+			) : (
+				<span className="text-muted-foreground/60">No repo</span>
+			)}
+			{firstPr && (
+				<a
+					href={prUrls![0]}
+					target="_blank"
+					rel="noopener noreferrer"
+					onClick={(e) => e.stopPropagation()}
+					className="inline-flex items-center gap-0.5 text-primary hover:underline shrink-0"
+				>
+					<GitPullRequestArrow className="h-3 w-3" />
+					<span>#{firstPr.number}</span>
+				</a>
+			)}
 		</span>
 	);
-}
-
-function BranchCell({ branchName }: { branchName: string | null }) {
-	return <span className="text-xs text-muted-foreground truncate block">{branchName}</span>;
 }
 
 function StatusCell({ config }: { config: OverallWorkStateDisplayConfig }) {
@@ -158,9 +149,6 @@ function UpdatedCell({ timeAgo }: { timeAgo: string | null }) {
 	);
 }
 
-/**
- * Creator column: show initials from createdBy or a dash.
- */
 function getInitials(value: string): string {
 	const normalized = value.trim();
 	if (!normalized) return "?";
@@ -179,18 +167,21 @@ function CreatorCell({
 	creator?: { id: string; name: string; image: string | null } | null;
 }) {
 	if (!createdBy || createdBy === "system") {
+		return null;
+	}
+
+	if (!creator) {
 		return (
-			<Avatar className="h-5 w-5" title="System">
-				<AvatarFallback className="text-[9px]">S</AvatarFallback>
+			<Avatar className="h-5 w-5">
+				<AvatarFallback className="text-[9px]" />
 			</Avatar>
 		);
 	}
 
-	const displayName = creator?.name || createdBy.slice(0, 8);
 	return (
-		<Avatar className="h-5 w-5" title={displayName}>
-			<AvatarImage src={creator?.image ?? undefined} alt={displayName} />
-			<AvatarFallback className="text-[9px]">{getInitials(displayName)}</AvatarFallback>
+		<Avatar className="h-5 w-5" title={creator.name}>
+			<AvatarImage src={creator.image ?? undefined} alt={creator.name} />
+			<AvatarFallback className="text-[9px]">{getInitials(creator.name)}</AvatarFallback>
 		</Avatar>
 	);
 }
@@ -216,7 +207,7 @@ export function SessionListRow({ session, pendingRun, isNew, onClick }: SessionL
 	const [menuOpen, setMenuOpen] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 
-	const { overallWorkState } = useOverallWorkState(session, pendingRun);
+	const { overallWorkState, needsAttention } = useOverallWorkState(session, pendingRun);
 	const config = OVERALL_WORK_STATE_DISPLAY[overallWorkState];
 
 	const repoShortName = session.repo?.githubRepoName
@@ -224,7 +215,7 @@ export function SessionListRow({ session, pendingRun, isNew, onClick }: SessionL
 		: null;
 
 	const displayTitle = session.title || session.promptSnippet || repoShortName || "Untitled";
-	const hasUnreadUpdate = session.hasUnreadUpdate ?? session.unread ?? false;
+	const isSetup = session.kind === "setup" || session.sessionType === "setup";
 
 	const activityDate = session.lastActivityAt || session.startedAt;
 	const timeAgo = activityDate ? formatCompactTimeAgo(new Date(activityDate)) : null;
@@ -288,8 +279,25 @@ export function SessionListRow({ session, pendingRun, isNew, onClick }: SessionL
 					if (e.key === "Enter" && !isEditing) handleRowClick();
 				}}
 			>
+				{/* Attention dot (fixed width so title alignment is stable) */}
+				<div className="w-4 shrink-0 flex items-center justify-center">
+					{needsAttention && (
+						<span
+							className="h-1.5 w-1.5 rounded-full bg-primary shrink-0"
+							aria-label="Needs attention"
+							title="Needs attention"
+						/>
+					)}
+				</div>
+
 				{/* Title (flex-1) */}
-				<div className="flex-1 min-w-[140px]">
+				<div className="flex-1 min-w-[140px] flex items-center gap-1.5">
+					{isSetup && (
+						<Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 gap-0.5">
+							<Settings className="h-2.5 w-2.5" />
+							Setup
+						</Badge>
+					)}
 					{isEditing ? (
 						<Input
 							ref={inputRef}
@@ -306,40 +314,18 @@ export function SessionListRow({ session, pendingRun, isNew, onClick }: SessionL
 					) : session.titleStatus === "generating" ? (
 						<span className="inline-block h-4 w-40 rounded bg-muted-foreground/20 animate-pulse" />
 					) : (
-						<span className="inline-flex items-center gap-1.5 min-w-0">
-							{hasUnreadUpdate ? (
-								<span
-									className="h-1.5 w-1.5 rounded-full bg-primary shrink-0"
-									aria-label="Unread update"
-									title="Unread update"
-								/>
-							) : null}
-							<span className="font-medium text-foreground truncate block">{displayTitle}</span>
-						</span>
+						<span className="font-medium text-foreground truncate block">{displayTitle}</span>
 					)}
 				</div>
 
-				{/* Repo (w-24, hidden on mobile) */}
-				<Column className="w-24 shrink-0 hidden md:block">
-					<RepoCell repoShortName={repoShortName} />
-				</Column>
-
-				{/* Branch (w-28, hidden on mobile) */}
-				<Column className="w-24 shrink-0 hidden md:block">
-					<BranchCell branchName={session.branchName} />
+				{/* Repo + PR (w-32, hidden on mobile) */}
+				<Column className="w-32 shrink-0 hidden md:block">
+					<RepoCell repoShortName={repoShortName} prUrls={session.prUrls} />
 				</Column>
 
 				{/* Status (w-20) */}
 				<Column className="w-20 shrink-0 flex items-center gap-1.5">
 					<StatusCell config={config} />
-				</Column>
-
-				{/* Attention (w-24) */}
-				<Column className="w-20 shrink-0">
-					<AttentionCell
-						pendingRun={pendingRun}
-						requiresHumanReview={session.status.requiresHumanReview}
-					/>
 				</Column>
 
 				{/* Origin (w-20, hidden on mobile) */}
@@ -352,12 +338,12 @@ export function SessionListRow({ session, pendingRun, isNew, onClick }: SessionL
 					<CreatorCell createdBy={session.createdBy} creator={session.creator} />
 				</Column>
 
-				{/* Updated (w-20) */}
+				{/* Updated (w-14) */}
 				<Column className="w-14 shrink-0 text-right">
 					<UpdatedCell timeAgo={timeAgo} />
 				</Column>
 
-				{/* Actions overlay (w-6) */}
+				{/* Actions overlay (w-5) */}
 				<div className="w-5 shrink-0 relative flex items-center justify-center">
 					<div
 						className={cn("hidden group-hover:flex items-center", menuOpen && "flex")}
@@ -407,7 +393,6 @@ export function SessionListRow({ session, pendingRun, isNew, onClick }: SessionL
 				</div>
 			</div>
 
-			{/* Delete Confirmation Dialog */}
 			<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<AlertDialogContent>
 					<AlertDialogHeader>

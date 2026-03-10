@@ -139,6 +139,70 @@ export const secretsRouter = {
 		}),
 
 	/**
+	 * Assign a secret to multiple repos.
+	 */
+	assignToRepos: orgProcedure
+		.input(
+			z.object({
+				key: z.string().min(1),
+				value: z.string().min(1),
+				repoIds: z.array(z.string().uuid()),
+			}),
+		)
+		.output(z.object({ success: z.boolean() }))
+		.handler(async ({ input, context }) => {
+			await secrets.assignSecretToRepos({
+				orgId: context.orgId,
+				key: input.key,
+				value: input.value,
+				repoIds: input.repoIds,
+			});
+			return { success: true };
+		}),
+
+	/**
+	 * Update a secret's value across specific repos.
+	 */
+	updateValue: orgProcedure
+		.input(
+			z.object({
+				key: z.string().min(1),
+				newValue: z.string().min(1),
+				repoIds: z.array(z.string().uuid()),
+			}),
+		)
+		.output(z.object({ success: z.boolean() }))
+		.handler(async ({ input, context }) => {
+			await secrets.updateSecretValue({
+				orgId: context.orgId,
+				key: input.key,
+				newValue: input.newValue,
+				repoIds: input.repoIds,
+			});
+			return { success: true };
+		}),
+
+	/**
+	 * Remove a secret from specific repos.
+	 */
+	removeFromRepos: orgProcedure
+		.input(
+			z.object({
+				key: z.string().min(1),
+				repoIds: z.array(z.string().uuid()),
+			}),
+		)
+		.output(z.object({ success: z.boolean() }))
+		.handler(async ({ input, context }) => {
+			await secrets.removeSecretFromRepos({
+				orgId: context.orgId,
+				key: input.key,
+				repoIds: input.repoIds,
+			});
+			return { success: true };
+		}),
+
+	/**
 	 * Sync secrets to a running sandbox (stub — to be implemented when sandbox sync is ready).
 	 */
 	syncSecrets: orgProcedure

@@ -3,13 +3,20 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useCreateSecret, useDeleteSecret } from "@/hooks/org/use-secrets";
+import { useCreateSecret, useDeleteSecret, useSecretsGrouped } from "@/hooks/org/use-secrets";
 import type { Secret } from "@proliferate/shared/contracts/secrets";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { SecretEditModal } from "./secret-edit-modal";
 
 interface SecretsSectionProps {
 	secrets: Secret[];
+}
+
+interface GroupedSecret {
+	key: string;
+	secretType: string | null;
+	repos: Array<{ repoId: string | null; repoName: string | null }>;
 }
 
 export function SecretsSection({ secrets }: SecretsSectionProps) {
@@ -19,15 +26,26 @@ export function SecretsSection({ secrets }: SecretsSectionProps) {
 	const [newKey, setNewKey] = useState("");
 	const [newValue, setNewValue] = useState("");
 	const [addError, setAddError] = useState("");
+	const [editingSecret, setEditingSecret] = useState<GroupedSecret | null>(null);
 
 	const deleteSecret = useDeleteSecret();
 	const createSecret = useCreateSecret();
+	const { data: groupedSecrets } = useSecretsGrouped();
 
 	const filteredSecrets = useMemo(() => {
 		if (!searchQuery) return secrets;
 		const q = searchQuery.toLowerCase();
 		return secrets.filter((s) => s.key.toLowerCase().includes(q));
 	}, [secrets, searchQuery]);
+
+	// Build a lookup from key -> grouped data for the edit modal
+	const groupedByKey = useMemo(() => {
+		const map = new Map<string, GroupedSecret>();
+		for (const g of groupedSecrets ?? []) {
+			map.set(g.key, g);
+		}
+		return map;
+	}, [groupedSecrets]);
 
 	const handleAddSecret = async () => {
 		if (!newKey.trim()) {
@@ -49,6 +67,13 @@ export function SecretsSection({ secrets }: SecretsSectionProps) {
 			setShowAddForm(false);
 		} catch (err) {
 			setAddError(err instanceof Error ? err.message : "Failed to create secret");
+		}
+	};
+
+	const handleEdit = (secretKey: string) => {
+		const grouped = groupedByKey.get(secretKey);
+		if (grouped) {
+			setEditingSecret(grouped);
 		}
 	};
 
@@ -185,6 +210,14 @@ export function SecretsSection({ secrets }: SecretsSectionProps) {
 									variant="ghost"
 									size="icon"
 									className="h-6 w-6"
+									onClick={() => handleEdit(secret.key)}
+								>
+									<Pencil className="h-3 w-3" />
+								</Button>
+								<Button
+									variant="ghost"
+									size="icon"
+									className="h-6 w-6"
 									onClick={() => deleteSecret.mutate(secret.id)}
 								>
 									<Trash2 className="h-3 w-3" />
@@ -194,6 +227,14 @@ export function SecretsSection({ secrets }: SecretsSectionProps) {
 					))}
 				</div>
 			) : null}
+
+			<SecretEditModal
+				secret={editingSecret}
+				open={editingSecret !== null}
+				onOpenChange={(open) => {
+					if (!open) setEditingSecret(null);
+				}}
+			/>
 		</section>
 	);
 }

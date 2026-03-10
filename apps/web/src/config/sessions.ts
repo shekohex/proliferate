@@ -20,7 +20,7 @@ export const OVERALL_WORK_STATE_DISPLAY: Record<OverallWorkState, OverallWorkSta
 		animated: true,
 	},
 	needs_input: {
-		label: "Needs input",
+		label: "Idle",
 		colorClassName: "text-muted-foreground",
 		animated: false,
 	},

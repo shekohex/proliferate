@@ -82,7 +82,7 @@ export function Sidebar() {
 
 	const isSettingsPage = pathname?.startsWith("/settings");
 	const isHomePage = pathname === "/" || pathname === "/dashboard";
-	const isSessionsPage = pathname?.startsWith("/sessions");
+	const isSessionsPage = pathname?.startsWith("/sessions") || pathname?.startsWith("/workspace");
 	const isCoworkersPage = pathname?.startsWith("/coworkers");
 	const isIntegrationsPage = pathname?.startsWith("/integrations");
 
@@ -405,7 +405,7 @@ function DashboardNav({ onNavigate }: { onNavigate?: () => void }) {
 	const router = useRouter();
 
 	const isHomePage = pathname === "/" || pathname === "/dashboard";
-	const isSessionsPage = pathname?.startsWith("/sessions");
+	const isSessionsPage = pathname?.startsWith("/sessions") || pathname?.startsWith("/workspace");
 	const isCoworkersPage = pathname?.startsWith("/coworkers");
 	const isIntegrationsPage = pathname?.startsWith("/integrations");
 	const isSettingsPage = pathname?.startsWith("/settings");

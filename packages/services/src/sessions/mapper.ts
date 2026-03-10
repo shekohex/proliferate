@@ -116,12 +116,16 @@ export function toSession(
 	options?: ToSessionOptions,
 ): Session {
 	const enriched = isEnrichedRow(row);
+	const creator =
+		enriched && row.creatorName
+			? { id: row.createdBy ?? "", name: row.creatorName, image: row.creatorImage ?? null }
+			: null;
 	return {
 		id: row.id,
 		repoId: row.repoId,
 		organizationId: row.organizationId,
 		createdBy: row.createdBy,
-		creator: null,
+		creator,
 		kind: toSessionKind(row.kind),
 		sessionType: row.sessionType,
 		status: toCanonicalStatus(row),

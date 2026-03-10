@@ -34,6 +34,7 @@ import {
 	sessionUserState,
 	sessions,
 	sql,
+	user,
 	workers,
 } from "../db/client";
 import type {
@@ -66,9 +67,11 @@ export type SessionWithRepoRow = SessionRow & {
 	configuration?: ConfigurationSummary | null;
 };
 
-/** Enriched session row with unread, worker name, and pending approval count */
+/** Enriched session row with unread, worker name, creator info, and pending approval count */
 export type EnrichedSessionRow = SessionWithRepoRow & {
 	workerName: string | null;
+	creatorName: string | null;
+	creatorImage: string | null;
 	isUnread: boolean;
 	pendingApprovalCount: number;
 };
@@ -231,10 +234,13 @@ export async function listByOrganizationEnriched(
 		.select({
 			session: sessions,
 			workerName: workers.name,
+			creatorName: user.name,
+			creatorImage: user.image,
 			lastViewedAt: sessionUserState.lastViewedAt,
 			pendingApprovalCount: pendingApprovalCount.count,
 		})
 		.from(sessions)
+		.leftJoin(user, eq(sessions.createdBy, user.id))
 		.leftJoin(workers, eq(sessions.workerId, workers.id))
 		.leftJoin(
 			sessionUserState,
@@ -287,6 +293,8 @@ export async function listByOrganizationEnriched(
 			automation: relations?.automation ?? null,
 			configuration: relations?.configuration ?? null,
 			workerName: row.workerName ?? null,
+			creatorName: row.creatorName ?? null,
+			creatorImage: row.creatorImage ?? null,
 			isUnread,
 			pendingApprovalCount: Number(row.pendingApprovalCount ?? 0),
 		};

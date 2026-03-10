@@ -75,3 +75,43 @@ export function useCheckSecrets() {
 		},
 	};
 }
+
+export function useSecretsGrouped() {
+	return useQuery({
+		...orpc.secrets.listGrouped.queryOptions({}),
+		select: (data) => data.secrets,
+	});
+}
+
+export function useAssignSecretToRepos() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.secrets.assignToRepos.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: orpc.secrets.list.key() });
+			queryClient.invalidateQueries({ queryKey: orpc.secrets.listGrouped.key() });
+		},
+	});
+}
+
+export function useUpdateSecretValue() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.secrets.updateValue.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: orpc.secrets.list.key() });
+			queryClient.invalidateQueries({ queryKey: orpc.secrets.listGrouped.key() });
+		},
+	});
+}
+
+export function useRemoveSecretFromRepos() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.secrets.removeFromRepos.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: orpc.secrets.list.key() });
+			queryClient.invalidateQueries({ queryKey: orpc.secrets.listGrouped.key() });
+		},
+	});
+}

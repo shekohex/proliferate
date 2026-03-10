@@ -115,12 +115,21 @@ export async function setupWorkspace(
 		);
 
 		const repoBranch = repo.branch ?? opts.branch;
-		const cloneResult = await sandbox.commands.run(
-			buildCloneCommand(repoBranch, cloneUrl, targetDir),
-			{
+		let cloneResult: Awaited<ReturnType<typeof sandbox.commands.run>>;
+		try {
+			cloneResult = await sandbox.commands.run(buildCloneCommand(repoBranch, cloneUrl, targetDir), {
 				timeoutMs: 120000,
-			},
-		);
+			});
+		} catch (cloneErr) {
+			log.error(
+				{
+					repo: repo.workspacePath,
+					error: cloneErr instanceof Error ? cloneErr.message : String(cloneErr),
+				},
+				"Clone command threw exception",
+			);
+			throw cloneErr;
+		}
 
 		if (cloneResult.exitCode !== 0) {
 			log.warn(

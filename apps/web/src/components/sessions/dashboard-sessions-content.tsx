@@ -189,15 +189,14 @@ export function DashboardSessionsContent() {
 				<div className="rounded-lg border border-border bg-card overflow-hidden">
 					{/* Table header */}
 					<div className="flex items-center px-4 py-1.5 border-b border-border/50 bg-muted/20 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+						<span className="w-4 shrink-0" />
 						<span className="flex-1 min-w-0">Session</span>
-						<span className="w-24 shrink-0 hidden md:block">Repo</span>
-						<span className="w-28 shrink-0 hidden md:block">Branch</span>
+						<span className="w-32 shrink-0 hidden md:block">Repo</span>
 						<span className="w-20 shrink-0">Status</span>
-						<span className="w-24 shrink-0">Attention</span>
-						<span className="w-20 shrink-0 hidden md:block">Origin</span>
-						<span className="w-20 shrink-0 hidden md:block">Creator</span>
-						<span className="w-20 shrink-0">Updated</span>
-						<span className="w-6 shrink-0" />
+						<span className="w-16 shrink-0 hidden md:block">Origin</span>
+						<span className="w-8 shrink-0 hidden md:block" />
+						<span className="w-14 shrink-0 text-right">Updated</span>
+						<span className="w-5 shrink-0" />
 					</div>
 					{result.filtered.map((session) => (
 						<SessionListRow

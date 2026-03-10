@@ -18,12 +18,11 @@ export default function NewSessionPage() {
 
 	const { data: repo } = useRepo(repoId || "");
 
-	const { isPending, isSuccess, isError, errorMessage, stage, retry, create } =
-		useCreateSessionFromRepo({
-			repoId,
-			sessionType,
-			modelId: selectedModel,
-		});
+	const { isPending, isSuccess, isError, errorMessage, retry, create } = useCreateSessionFromRepo({
+		repoId,
+		sessionType,
+		modelId: selectedModel,
+	});
 
 	// Trigger creation once
 	useEffect(() => {
@@ -70,7 +69,6 @@ export default function NewSessionPage() {
 	return (
 		<SessionLoadingShell
 			mode="creating"
-			stage={stage}
 			repoName={repo?.githubRepoName}
 			initialPrompt={sessionType === "setup" ? pendingPrompt || undefined : undefined}
 		/>
