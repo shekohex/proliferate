@@ -1,3 +1,5 @@
+-- Drop task linkage constraint before bulk UPDATE (NOT VALID still enforces on writes)
+ALTER TABLE "sessions" DROP CONSTRAINT IF EXISTS "sessions_task_linkage_check";--> statement-breakpoint
 ALTER TABLE "sessions"
 ADD COLUMN "sandbox_state" text DEFAULT 'provisioning' NOT NULL,
 ADD COLUMN "agent_state" text DEFAULT 'iterating' NOT NULL,
@@ -75,4 +77,6 @@ SET
 		WHEN "pause_reason" = 'suspended' THEN 'suspended'
 		ELSE NULL
 	END,
-	"state_updated_at" = COALESCE("paused_at", "ended_at", "last_activity_at", now());
+	"state_updated_at" = COALESCE("paused_at", "ended_at", "last_activity_at", now());--> statement-breakpoint
+-- Re-add task linkage constraint (NOT VALID — don't check existing rows)
+ALTER TABLE "sessions" ADD CONSTRAINT "sessions_task_linkage_check" CHECK ((kind != 'task'::text) OR (configuration_id IS NULL) OR (repo_id IS NOT NULL AND repo_baseline_id IS NOT NULL AND repo_baseline_target_id IS NOT NULL)) NOT VALID;
