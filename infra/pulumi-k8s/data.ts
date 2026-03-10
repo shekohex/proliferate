@@ -127,7 +127,7 @@ export function createDataServices(network: NetworkOutputs): DataOutputs {
 			port: 6379,
 			automaticFailoverEnabled: redisNumNodes > 1,
 			atRestEncryptionEnabled: true,
-			transitEncryptionEnabled: true,
+			transitEncryptionEnabled: false,
 			tags: { Name: `${namePrefix}-redis` },
 		},
 		{ provider },
