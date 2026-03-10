@@ -270,6 +270,16 @@ jobs:
           pulumi config set imageTag "${DEPLOY_SHA:-$GITHUB_SHA}"
           pulumi config set deployApps true
 
+      - name: Pulumi refresh
+        working-directory: infra/pulumi-k8s
+        run: |
+          set -euo pipefail
+          if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            echo "Dry run enabled; skipping refresh."
+            exit 0
+          fi
+          pulumi refresh --yes
+
       - name: Pulumi up
         working-directory: infra/pulumi-k8s
         run: |
