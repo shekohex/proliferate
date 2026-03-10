@@ -1,3 +1,5 @@
+-- Fix existing sessions: kind defaults to 'task' but pre-existing sessions are coding sessions
+UPDATE "sessions" SET "kind" = 'coding' WHERE "kind" = 'task' AND ("repo_id" IS NULL OR "repo_baseline_id" IS NULL);--> statement-breakpoint
 ALTER TABLE "sessions" ALTER COLUMN "kind" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "sessions" ALTER COLUMN "runtime_status" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "sessions" ALTER COLUMN "operator_status" SET NOT NULL;--> statement-breakpoint
