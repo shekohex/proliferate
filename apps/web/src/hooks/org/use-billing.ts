@@ -14,23 +14,15 @@ export function useBilling() {
 	return useQuery({
 		...orpc.billing.getInfo.queryOptions({ input: {} }),
 		enabled: billingEnabled,
-		// Refetch every 5 minutes to keep credit balance fresh
-		staleTime: 5 * 60 * 1000,
-		// Don't refetch on window focus for billing data
-		refetchOnWindowFocus: false,
+		staleTime: 30_000,
+		refetchInterval: 30_000,
 	});
 }
 
 /**
- * Billing state types (V2).
+ * Billing state types.
  */
-export type BillingStateType =
-	| "unconfigured"
-	| "trial"
-	| "active"
-	| "grace"
-	| "exhausted"
-	| "suspended";
+export type BillingStateType = "free" | "active" | "grace" | "exhausted" | "suspended";
 
 /**
  * Derived billing state for common checks.
@@ -40,12 +32,11 @@ export interface BillingState {
 	hasCredits: boolean;
 	creditBalance: number;
 	planName: string;
-	isTrialState: boolean;
+	isFreeState: boolean;
 	selectedPlan: "dev" | "pro";
 	hasActiveSubscription: boolean;
 	isNearCreditLimit: boolean;
-	overagePolicy: "pause" | "allow";
-	// V2 state fields
+	autoRechargeEnabled: boolean;
 	billingState: BillingStateType;
 	shadowBalance: number;
 	graceExpiresAt: string | null;
@@ -55,7 +46,6 @@ export interface BillingState {
 
 /**
  * Hook to get simplified billing state for UI components.
- * V2: Includes billing state machine info.
  */
 export function useBillingState(): BillingState {
 	const billingEnabled = env.NEXT_PUBLIC_BILLING_ENABLED;
@@ -67,13 +57,12 @@ export function useBillingState(): BillingState {
 			hasCredits: true, // Default to allowing access while loading
 			creditBalance: 0,
 			planName: "Loading...",
-			isTrialState: false,
+			isFreeState: true,
 			selectedPlan: "dev",
 			hasActiveSubscription: false,
 			isNearCreditLimit: false,
-			overagePolicy: "pause",
-			// V2 defaults
-			billingState: "unconfigured",
+			autoRechargeEnabled: false,
+			billingState: "free",
 			shadowBalance: 0,
 			graceExpiresAt: null,
 			canStartSession: true,
@@ -81,23 +70,22 @@ export function useBillingState(): BillingState {
 		};
 	}
 
-	const creditBalance = Math.round(data.credits.balance);
+	const creditBalance = data.credits.balance;
 	const hasCredits = creditBalance > 0;
-	const isTrialState = data.state.billingState === "trial";
-	// Consider "near limit" when below 2% of included credits or < 20 credits
-	const isNearCreditLimit = creditBalance < Math.max(data.credits.included * 0.02, 20);
+	const isFreeState = data.state.billingState === "free";
+	// Consider "near limit" when below 2% of included credits or < 1 credit
+	const isNearCreditLimit = creditBalance < Math.max(data.credits.included * 0.02, 1);
 
 	return {
 		isLoaded: true,
 		hasCredits,
 		creditBalance,
 		planName: data.plan.name,
-		isTrialState,
+		isFreeState,
 		selectedPlan: data.selectedPlan,
 		hasActiveSubscription: data.hasActiveSubscription,
 		isNearCreditLimit,
-		overagePolicy: data.billingSettings.overage_policy,
-		// V2 state fields
+		autoRechargeEnabled: data.billingSettings.auto_recharge_enabled,
 		billingState: data.state.billingState,
 		shadowBalance: data.state.shadowBalance,
 		graceExpiresAt: data.state.graceExpiresAt,
@@ -117,13 +105,14 @@ export function useBuyCredits() {
 		...orpc.billing.buyCredits.mutationOptions(),
 		onSuccess: () => {
 			// Invalidate billing data to refresh credit balance
-			queryClient.invalidateQueries({ queryKey: ["billing"] });
+			queryClient.invalidateQueries({ queryKey: orpc.billing.getInfo.key() });
+			queryClient.invalidateQueries({ queryKey: orpc.billing.getUsageSummary.key() });
 		},
 	});
 }
 
 /**
- * Hook to update billing settings (overage policy, cap, etc.).
+ * Hook to update billing settings (auto-recharge, cap, etc.).
  * Only admins/owners can update settings.
  */
 export function useUpdateBillingSettings() {
@@ -133,13 +122,28 @@ export function useUpdateBillingSettings() {
 		...orpc.billing.updateSettings.mutationOptions(),
 		onSuccess: () => {
 			// Invalidate billing data to refresh settings
-			queryClient.invalidateQueries({ queryKey: ["billing"] });
+			queryClient.invalidateQueries({ queryKey: orpc.billing.getInfo.key() });
+			queryClient.invalidateQueries({ queryKey: orpc.billing.getUsageSummary.key() });
 		},
 	});
 }
 
 /**
- * Hook to activate the selected plan after trial.
+ * Hook to set up a payment method (add credit card).
+ */
+export function useSetupPaymentMethod() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.billing.setupPaymentMethod.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: orpc.billing.getInfo.key() });
+		},
+	});
+}
+
+/**
+ * Hook to activate the selected plan.
  */
 export function useActivatePlan() {
 	const queryClient = useQueryClient();
@@ -147,7 +151,8 @@ export function useActivatePlan() {
 	return useMutation({
 		...orpc.billing.activatePlan.mutationOptions(),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["billing"] });
+			queryClient.invalidateQueries({ queryKey: orpc.billing.getInfo.key() });
+			queryClient.invalidateQueries({ queryKey: orpc.billing.getUsageSummary.key() });
 		},
 	});
 }

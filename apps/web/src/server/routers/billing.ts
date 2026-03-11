@@ -8,10 +8,12 @@ import { logger } from "@/lib/infra/logger";
 import { ORPCError } from "@orpc/server";
 import { env } from "@proliferate/environment/server";
 import { billing } from "@proliferate/services";
+import { TOP_UP_PACKS, type TopUpPackId } from "@proliferate/shared/billing";
 import {
 	ActivatePlanResponseSchema,
 	BillingInfoSchema,
 	BuyCreditsResponseSchema,
+	SetupPaymentResponseSchema,
 	UpdateBillingSettingsResponseSchema,
 } from "@proliferate/shared/contracts/billing";
 import { z } from "zod";
@@ -78,7 +80,7 @@ export const billingRouter = {
 	updateSettings: orgProcedure
 		.input(
 			z.object({
-				overage_policy: z.enum(["pause", "allow"]).optional(),
+				auto_recharge_enabled: z.boolean().optional(),
 				overage_cap_cents: z.number().nullable().optional(),
 			}),
 		)
@@ -96,7 +98,30 @@ export const billingRouter = {
 		}),
 
 	/**
-	 * Activate the selected plan (dev/pro) after trial credits are exhausted.
+	 * Set up a payment method (add credit card).
+	 * Returns a Stripe checkout URL for payment setup.
+	 */
+	setupPaymentMethod: orgProcedure
+		.input(z.object({}).optional())
+		.output(SetupPaymentResponseSchema)
+		.handler(async ({ context }) => {
+			try {
+				await billing.assertBillingAdmin(context.user.id, context.orgId);
+				return await billing.setupOrgPaymentMethod({
+					orgId: context.orgId,
+					userEmail: context.user.email,
+					appUrl: env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+				});
+			} catch (err) {
+				throwMappedBillingError(err, {
+					forbiddenMessage: "Only admins can manage payment methods",
+					internalMessage: "Failed to set up payment method",
+				});
+			}
+		}),
+
+	/**
+	 * Activate the selected plan (dev/pro).
 	 * Returns a checkout URL if payment method is required.
 	 */
 	activatePlan: orgProcedure
@@ -124,7 +149,11 @@ export const billingRouter = {
 	 * Returns a Stripe checkout URL or confirms credits added directly.
 	 */
 	buyCredits: orgProcedure
-		.input(z.object({ quantity: z.number().int().min(1).max(10).default(1) }).optional())
+		.input(
+			z.object({
+				packId: z.enum(TOP_UP_PACKS.map((p) => p.productId) as [TopUpPackId, ...TopUpPackId[]]),
+			}),
+		)
 		.output(BuyCreditsResponseSchema)
 		.handler(async ({ context, input }) => {
 			try {
@@ -133,7 +162,7 @@ export const billingRouter = {
 					orgId: context.orgId,
 					userId: context.user.id,
 					userEmail: context.user.email,
-					quantity: input?.quantity ?? 1,
+					packId: input.packId,
 					appUrl: env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
 				});
 			} catch (err) {
@@ -244,11 +273,6 @@ export const billingRouter = {
 			z.object({
 				concurrentSessions: z.object({ current: z.number(), max: z.number() }),
 				activeCoworkers: z.object({ current: z.number(), max: z.number() }),
-				monthlyUsage: z.object({
-					used: z.number(),
-					included: z.number(),
-					warningLevel: z.enum(["none", "approaching", "critical", "exhausted"]),
-				}),
 			}),
 		)
 		.handler(async ({ context }) => {

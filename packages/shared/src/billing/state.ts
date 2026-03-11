@@ -4,11 +4,10 @@
  * Manages organization billing state transitions and enforcement actions.
  *
  * States:
- * - unconfigured: No billing set up
- * - trial: Using trial credits (plan selected, not yet billed)
- * - active: Paid plan with positive balance
- * - grace: Balance exhausted, grace window active
- * - exhausted: Grace expired, sessions blocked
+ * - free: Free tier with permanent credits (no CC required)
+ * - active: Paid plan or purchased credits
+ * - grace: Balance exhausted, grace window active (paid plans only)
+ * - exhausted: Credits exhausted, sessions blocked
  * - suspended: Manually suspended (billing issues)
  */
 
@@ -28,7 +27,6 @@ import {
  */
 export type BillingStateEvent =
 	| { type: "plan_attached"; plan: string }
-	| { type: "trial_started" }
 	| { type: "balance_depleted" }
 	| { type: "grace_expired" }
 	| { type: "credits_added"; amount: number }
@@ -67,13 +65,10 @@ const VALID_TRANSITIONS: Record<
 	BillingState,
 	Partial<Record<BillingStateEvent["type"], BillingState>>
 > = {
-	unconfigured: {
+	free: {
+		balance_depleted: "exhausted", // No grace for free tier
+		credits_added: "active", // First purchase transitions to active
 		plan_attached: "active",
-		trial_started: "trial",
-	},
-	trial: {
-		plan_attached: "active",
-		balance_depleted: "exhausted",
 		manual_suspend: "suspended",
 	},
 	active: {
@@ -145,10 +140,13 @@ export function processStateTransition(
 			}
 
 			case "exhausted":
-				// Grace expired - pause all sessions
+				// Credits exhausted - pause all sessions
 				action = {
 					type: "pause_sessions",
-					reason: "Grace period expired. All sessions paused.",
+					reason:
+						currentState === "free"
+							? "Free credits exhausted. All sessions paused."
+							: "Grace period expired. All sessions paused.",
 				};
 				break;
 
@@ -188,13 +186,12 @@ export function processStateTransition(
  */
 export function canStartSessionsInState(state: BillingState): boolean {
 	switch (state) {
-		case "trial":
+		case "free":
 		case "active":
 			return true;
 		case "grace":
 		case "exhausted":
 		case "suspended":
-		case "unconfigured":
 			return false;
 	}
 }
@@ -207,8 +204,7 @@ export function shouldPauseSessionsInState(state: BillingState): boolean {
 		case "exhausted":
 		case "suspended":
 			return true;
-		case "unconfigured":
-		case "trial":
+		case "free":
 		case "active":
 		case "grace":
 			return false;
@@ -235,10 +231,8 @@ export function getStateMessage(
 	},
 ): string {
 	switch (state) {
-		case "unconfigured":
-			return "Billing not configured. Set up a plan to start sessions.";
-		case "trial":
-			return "Using trial credits.";
+		case "free":
+			return "Using free credits.";
 		case "active":
 			return options?.shadowBalance !== undefined
 				? `Active with ${options.shadowBalance.toFixed(2)} credits remaining.`
@@ -251,7 +245,7 @@ export function getStateMessage(
 			}
 			return "Credits exhausted. Grace period active.";
 		case "exhausted":
-			return "Credits exhausted. Activate your plan or add credits to continue.";
+			return "Credits exhausted. Add credits or upgrade to continue.";
 		case "suspended":
 			return "Account suspended. Contact support.";
 	}

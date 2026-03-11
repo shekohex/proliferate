@@ -13,6 +13,7 @@ import type { BillingState, ReconciliationType } from "@proliferate/shared/billi
 import {
 	GRACE_WINDOW_CONFIG,
 	getStateUpdateFields,
+	normalizeBillingState,
 	processStateTransition,
 } from "@proliferate/shared/billing";
 import {
@@ -106,6 +107,7 @@ export async function deductShadowBalance(update: ShadowBalanceUpdate): Promise<
 				billingState: organization.billingState,
 				shadowBalance: organization.shadowBalance,
 				graceExpiresAt: organization.graceExpiresAt,
+				autumnCustomerId: organization.autumnCustomerId,
 			})
 			.from(organization)
 			.where(eq(organization.id, update.organizationId))
@@ -117,13 +119,12 @@ export async function deductShadowBalance(update: ShadowBalanceUpdate): Promise<
 
 		const previousBalance = Number(org.shadowBalance ?? 0);
 		const newBalance = previousBalance - update.credits;
-		const currentState = org.billingState as BillingState;
+		const currentState = normalizeBillingState(org.billingState);
 
-		// Trial/unconfigured orgs have no Autumn customer — mark events "skipped"
-		// so the outbox ignores them. The insert is still required for idempotency:
-		// a crash between deduction and checkpoint advancement must not double-deduct.
-		const outboxStatus =
-			currentState === "trial" || currentState === "unconfigured" ? "skipped" : "pending";
+		// Orgs without an Autumn customer have no external billing to reconcile —
+		// mark events "skipped" so the outbox ignores them. The insert is still
+		// required for idempotency.
+		const outboxStatus = org.autumnCustomerId ? "pending" : "skipped";
 
 		// Global idempotency check via billing_event_keys lookup table.
 		// This preserves exactly-once semantics even when billing_events is partitioned
@@ -167,8 +168,8 @@ export async function deductShadowBalance(update: ShadowBalanceUpdate): Promise<
 		let enforcementReason: string | undefined;
 		let graceExpiresAt = org.graceExpiresAt;
 
-		if (newBalance <= 0 && (currentState === "active" || currentState === "trial")) {
-			// Balance depleted - transition to grace
+		if (newBalance <= 0 && (currentState === "active" || currentState === "free")) {
+			// Balance depleted - transition (active → grace, free → exhausted)
 			const transition = processStateTransition(currentState, { type: "balance_depleted" });
 
 			if (transition.transitioned) {
@@ -286,6 +287,7 @@ export async function bulkDeductShadowBalance(
 				billingState: organization.billingState,
 				shadowBalance: organization.shadowBalance,
 				graceExpiresAt: organization.graceExpiresAt,
+				autumnCustomerId: organization.autumnCustomerId,
 			})
 			.from(organization)
 			.where(eq(organization.id, organizationId))
@@ -296,12 +298,11 @@ export async function bulkDeductShadowBalance(
 		}
 
 		const previousBalance = Number(org.shadowBalance ?? 0);
-		const currentState = org.billingState as BillingState;
+		const currentState = normalizeBillingState(org.billingState);
 
-		// Trial/unconfigured orgs have no Autumn customer — mark events "skipped"
-		// so the outbox ignores them. The insert is still required for idempotency.
-		const outboxStatus =
-			currentState === "trial" || currentState === "unconfigured" ? "skipped" : "pending";
+		// Orgs without an Autumn customer have no external billing to reconcile —
+		// mark events "skipped" so the outbox ignores them.
+		const outboxStatus = org.autumnCustomerId ? "pending" : "skipped";
 
 		// 2. Bulk insert idempotency keys — determines which events are new
 		const keysInserted = await tx
@@ -351,7 +352,7 @@ export async function bulkDeductShadowBalance(
 		let enforcementReason: string | undefined;
 		let graceExpiresAt = org.graceExpiresAt;
 
-		if (newBalance <= 0 && (currentState === "active" || currentState === "trial")) {
+		if (newBalance <= 0 && (currentState === "active" || currentState === "free")) {
 			const transition = processStateTransition(currentState, { type: "balance_depleted" });
 			if (transition.transitioned) {
 				stateChanged = true;
@@ -452,14 +453,18 @@ export async function addShadowBalance(
 
 		const previousBalance = Number(org.shadowBalance ?? 0);
 		const newBalance = previousBalance + credits;
-		const currentState = org.billingState as BillingState;
+		const currentState = normalizeBillingState(org.billingState);
 
 		// Check if we need to transition state due to credits being added
 		let stateChanged = false;
 		let newState = currentState;
 
-		if (newBalance > 0 && (currentState === "grace" || currentState === "exhausted")) {
-			// Credits added - transition back to active
+		if (
+			newBalance > 0 &&
+			(currentState === "free" || currentState === "grace" || currentState === "exhausted")
+		) {
+			// Credits added - transition to active (from free on first purchase, or
+			// back to active from grace/exhausted)
 			const transition = processStateTransition(currentState, {
 				type: "credits_added",
 				amount: credits,

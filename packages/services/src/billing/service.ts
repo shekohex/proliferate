@@ -9,21 +9,25 @@ import { createBillingFastReconcileQueue } from "@proliferate/queue";
 import {
 	AUTUMN_FEATURES,
 	AUTUMN_PRODUCTS,
-	type BillingState,
 	DEFAULT_BILLING_SETTINGS,
 	PLAN_CONFIGS,
-	TOP_UP_PRODUCT,
-	TRIAL_CREDITS,
+	TOP_UP_PACKS,
+	type TopUpPackId,
 	autumnAttach,
+	autumnBillingPortal,
 	autumnGetCustomer,
+	autumnSetupPayment,
 	canPossiblyStart,
 	getStateMessage,
+	normalizeBillingState,
+	parseBillingSettings,
 } from "@proliferate/shared/billing";
 import type {
 	ActivatePlanResponse,
 	BillingInfo,
 	BillingSettings,
 	BuyCreditsResponse,
+	SetupPaymentResponse,
 	UpdateBillingSettingsResponse,
 } from "@proliferate/shared/contracts/billing";
 import { getServicesLogger } from "../logger";
@@ -108,6 +112,8 @@ export async function getOrgBillingInfo(orgId: string): Promise<BillingInfo> {
 		(p: { status: string }) => p.status === "active",
 	);
 	const hasActiveSubscription = Boolean(activeProduct);
+	// Payment method is expanded from Autumn — null/undefined means no card on file
+	const hasPaymentMethod = autumnCustomer?.payment_method != null;
 	const plan = (activeProduct?.id as "dev" | "pro" | undefined) ?? selectedPlan;
 	const planConfig = PLAN_CONFIGS[plan] ?? PLAN_CONFIGS.dev;
 
@@ -115,7 +121,7 @@ export async function getOrgBillingInfo(orgId: string): Promise<BillingInfo> {
 	const concurrentFeature = autumnCustomer?.features[AUTUMN_FEATURES.maxConcurrentSessions];
 	const snapshotsFeature = autumnCustomer?.features[AUTUMN_FEATURES.maxSnapshots];
 
-	const billingState = org.billingState as BillingState;
+	const billingState = normalizeBillingState(org.billingState);
 	const shadowBalance = Number(org.shadowBalance ?? 0);
 	const graceExpiresAt = org.graceExpiresAt;
 	const canStart = canPossiblyStart(billingState, graceExpiresAt);
@@ -123,10 +129,10 @@ export async function getOrgBillingInfo(orgId: string): Promise<BillingInfo> {
 		graceExpiresAt,
 		shadowBalance,
 	});
-	const isTrial = billingState === "trial";
+	const isFree = billingState === "free";
 	const useShadowBalance = billingState !== "active";
-	const creditsIncluded = isTrial
-		? TRIAL_CREDITS
+	const creditsIncluded = isFree
+		? 0 // Free tier has no "included" credits — they're granted once
 		: (creditsFeature?.included_usage ?? planConfig.creditsIncluded);
 	const creditsBalance = useShadowBalance
 		? shadowBalance
@@ -144,6 +150,7 @@ export async function getOrgBillingInfo(orgId: string): Promise<BillingInfo> {
 		},
 		selectedPlan,
 		hasActiveSubscription,
+		hasPaymentMethod,
 		credits: {
 			balance: creditsBalance,
 			used: creditsUsed,
@@ -158,14 +165,7 @@ export async function getOrgBillingInfo(orgId: string): Promise<BillingInfo> {
 			maxSnapshots: snapshotsFeature?.balance ?? planConfig.maxSnapshots,
 			snapshotRetentionDays: planConfig.snapshotRetentionDays,
 		},
-		billingSettings: org.billingSettings ?? DEFAULT_BILLING_SETTINGS,
-		overage: {
-			usedCents: org.overageUsedCents,
-			capCents: org.billingSettings?.overage_cap_cents ?? null,
-			cycleMonth: org.overageCycleMonth,
-			topupCount: org.overageTopupCount,
-			circuitBreakerActive: !!org.overageDeclineAt,
-		},
+		billingSettings: parseBillingSettings(org.billingSettings),
 		state: {
 			billingState,
 			shadowBalance,
@@ -188,12 +188,65 @@ export async function updateOrgBillingSettings(
 	const currentSettings = org.billingSettings ?? DEFAULT_BILLING_SETTINGS;
 	const newSettings = {
 		...currentSettings,
-		...(input.overage_policy !== undefined && { overage_policy: input.overage_policy }),
+		...(input.auto_recharge_enabled !== undefined && {
+			auto_recharge_enabled: input.auto_recharge_enabled,
+		}),
 		...(input.overage_cap_cents !== undefined && { overage_cap_cents: input.overage_cap_cents }),
 	};
 
 	await updateBillingSettings(orgId, newSettings);
 	return { success: true, settings: newSettings };
+}
+
+export async function setupOrgPaymentMethod(input: {
+	orgId: string;
+	userEmail: string;
+	appUrl: string;
+}): Promise<SetupPaymentResponse> {
+	if (!isBillingEnabled()) {
+		throw new BillingDisabledError();
+	}
+
+	const org = await getBillingInfoV2(input.orgId);
+	if (!org) {
+		throw new BillingNotFoundError();
+	}
+
+	const baseUrl = input.appUrl || "http://localhost:3000";
+	const returnUrl = `${baseUrl}/settings/billing?success=payment`;
+
+	// If customer already exists in Autumn, open billing portal
+	if (org.autumnCustomerId) {
+		try {
+			const portal = await autumnBillingPortal(org.autumnCustomerId, returnUrl);
+			return { success: true, checkoutUrl: portal.url };
+		} catch (err) {
+			log.warn({ err, orgId: input.orgId }, "Billing portal failed, falling back to setup_payment");
+		}
+	}
+
+	// Otherwise, initiate payment method setup (creates customer if needed)
+	const customerId = org.autumnCustomerId ?? input.orgId;
+	const result = await autumnSetupPayment({
+		customer_id: customerId,
+		success_url: returnUrl,
+		customer_data: {
+			email: input.userEmail,
+			name: org.name,
+		},
+	});
+
+	// Persist customer ID if Autumn created a new customer
+	if (!org.autumnCustomerId) {
+		await updateAutumnCustomerId(input.orgId, customerId);
+	}
+
+	const checkoutUrl = result.checkout_url ?? result.url;
+	if (checkoutUrl) {
+		return { success: true, checkoutUrl };
+	}
+
+	return { success: true, message: "Payment method already on file" };
 }
 
 export async function activateOrgPlan(input: {
@@ -260,15 +313,27 @@ export async function activateOrgPlan(input: {
 	};
 }
 
+export class BillingInvalidPackError extends Error {
+	constructor(packId: string) {
+		super(`Invalid top-up pack: ${packId}`);
+		this.name = "BillingInvalidPackError";
+	}
+}
+
 export async function buyOrgCredits(input: {
 	orgId: string;
 	userId: string;
 	userEmail: string;
-	quantity: number;
+	packId: TopUpPackId;
 	appUrl: string;
 }): Promise<BuyCreditsResponse> {
 	if (!isBillingEnabled()) {
 		throw new BillingDisabledError();
+	}
+
+	const pack = TOP_UP_PACKS.find((p) => p.productId === input.packId);
+	if (!pack) {
+		throw new BillingInvalidPackError(input.packId);
 	}
 
 	const org = await getBillingInfo(input.orgId);
@@ -277,13 +342,10 @@ export async function buyOrgCredits(input: {
 	}
 
 	const baseUrl = input.appUrl;
-	const quantity = input.quantity;
-	const totalCredits = TOP_UP_PRODUCT.credits * quantity;
-	const totalPriceCents = TOP_UP_PRODUCT.priceCents * quantity;
 
-	const firstResult = await autumnAttach({
+	const result = await autumnAttach({
 		customer_id: input.orgId,
-		product_id: TOP_UP_PRODUCT.productId,
+		product_id: pack.productId,
 		success_url: `${baseUrl}/settings/billing?success=credits`,
 		cancel_url: `${baseUrl}/settings/billing?canceled=credits`,
 		customer_data: {
@@ -292,32 +354,21 @@ export async function buyOrgCredits(input: {
 		},
 	});
 
-	const checkoutUrl = firstResult.checkout_url ?? firstResult.url;
+	const checkoutUrl = result.checkout_url ?? result.url;
 	if (checkoutUrl) {
 		return {
 			success: true,
 			checkoutUrl,
-			credits: TOP_UP_PRODUCT.credits,
-			priceCents: TOP_UP_PRODUCT.priceCents,
+			credits: pack.credits,
+			priceCents: pack.priceCents,
 		};
-	}
-
-	for (let i = 1; i < quantity; i++) {
-		await autumnAttach({
-			customer_id: input.orgId,
-			product_id: TOP_UP_PRODUCT.productId,
-			customer_data: {
-				email: input.userEmail,
-				name: org.name,
-			},
-		});
 	}
 
 	try {
 		await addShadowBalance(
 			input.orgId,
-			totalCredits,
-			`Credit top-up (${quantity}x pack, payment method on file)`,
+			pack.credits,
+			`Credit top-up (${pack.name} pack, payment method on file)`,
 			input.userId,
 		);
 	} catch (err) {
@@ -328,9 +379,9 @@ export async function buyOrgCredits(input: {
 
 	return {
 		success: true,
-		message: `${totalCredits} credits added to your account`,
-		credits: totalCredits,
-		priceCents: totalPriceCents,
+		message: `${pack.credits} credits added to your account`,
+		credits: pack.credits,
+		priceCents: pack.priceCents,
 	};
 }
 
@@ -446,30 +497,14 @@ export async function getOrgRecentBillingEvents(input: {
 export async function getOrgEntitlementStatus(orgId: string): Promise<{
 	concurrentSessions: { current: number; max: number };
 	activeCoworkers: { current: number; max: number };
-	monthlyUsage: {
-		used: number;
-		included: number;
-		warningLevel: "none" | "approaching" | "critical" | "exhausted";
-	};
 }> {
 	const status = await getEntitlementStatus(orgId);
 	if (!status) {
 		return {
 			concurrentSessions: { current: 0, max: 999 },
 			activeCoworkers: { current: 0, max: 999 },
-			monthlyUsage: { used: 0, included: 0, warningLevel: "none" },
 		};
 	}
 
-	return {
-		...status,
-		monthlyUsage: {
-			...status.monthlyUsage,
-			warningLevel: status.monthlyUsage.warningLevel as
-				| "none"
-				| "approaching"
-				| "critical"
-				| "exhausted",
-		},
-	};
+	return status;
 }
