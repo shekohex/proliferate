@@ -2,7 +2,7 @@
 
 > **Purpose:** Single source of truth for every product feature, its implementation status, and which spec owns it.
 > **Status key:** `Implemented` | `Partial` | `Planned` | `Deprecated`
-> **Updated:** 2026-03-07. Manager agent runtime spec freeze.
+> **Updated:** 2026-04-05. Coder provider integration spec added.
 > **Evidence convention:** `Planned` entries may cite RFC/spec files until code exists; once implemented, update evidence to concrete code paths.
 
 ---
@@ -45,6 +45,33 @@
 | E2B git freshness parity | Implemented | `packages/shared/src/providers/e2b.ts` | Extended to E2B in PR #97 |
 
 ---
+
+## 2A. Coder Provider Integration (`coder-provider.md`)
+
+| Feature | Status | Evidence | Notes |
+|---------|--------|----------|-------|
+| Coder provider adapter | Planned | `docs/specs/coder-provider.md` | Workspace lifecycle adapter on top of Coder control plane |
+| Coder provider settings surface | Planned | `docs/specs/coder-provider.md` | Org-scoped host/auth/template settings |
+| Template catalog sync | Planned | `docs/specs/coder-provider.md` | Fetch supported templates and parameter shapes |
+| Per-template defaults | Planned | `docs/specs/coder-provider.md` | Store default values for template parameters |
+| Repo-to-workspace binding | Planned | `docs/specs/coder-provider.md` | Map GitHub repos to prewarmed or reusable workspaces |
+| Workspace bridge helper | Planned | `docs/specs/coder-provider.md` | File/command/env/tunnel parity via helper daemon or SSH/PTTY |
+
+---
+
+## 2B. OpenCode ACP Runtime (`opencode-acp.md`)
+
+| Feature | Status | Evidence | Notes |
+|---------|--------|----------|-------|
+| ACP session bootstrap | Implemented | `apps/gateway/src/harness/coding/sandbox-agent-v2/client.ts` | `initialize` + `session/new` + SSE attach |
+| ACP prompt transport | Implemented | `apps/gateway/src/harness/coding/sandbox-agent-v2/client.ts` | `session/prompt` / `session/cancel` |
+| ACP session config options | Planned | `docs/specs/opencode-acp.md` | Preferred session-level config API (`configOptions`, `set_config_option`, `config_option_update`) |
+| ACP session modes | Deprecated | `docs/specs/opencode-acp.md` | Transitional compatibility surface only |
+| ACP plans | Planned | `docs/specs/opencode-acp.md` | `session/update` with `sessionUpdate: "plan"` |
+| ACP filesystem methods | Planned | `docs/specs/opencode-acp.md` | `fs/read_text_file`, `fs/write_text_file` |
+| ACP terminal methods | Planned | `docs/specs/opencode-acp.md` | `terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill`, `terminal/release` |
+| Slash command advertisement | Planned | `docs/specs/opencode-acp.md` | `available_commands_update` |
+| Legacy bridge retirement | Planned | `docs/specs/opencode-acp.md` | Demote duplicate file/command bridge-only paths |
 
 ## 3. Sessions & Gateway (`sessions-gateway.md`)
 

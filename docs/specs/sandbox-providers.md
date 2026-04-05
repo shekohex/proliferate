@@ -20,6 +20,7 @@
 - Session lifecycle orchestration, hub ownership, SSE runtime state machine — see `sessions-gateway.md`
 - Tool schemas/prompts and interception semantics — see `agent-contract.md`
 - Configuration lifecycle and snapshot build triggering policy — see `repos-prebuilds.md`
+- Coder provider integration workflow, provider settings, and workspace bridge semantics — see `coder-provider.md`
 - Secret CRUD and bundle lifecycle — see `secrets-environment.md`
 - LLM proxy key issuance/routing policy — see `llm-proxy.md`
 

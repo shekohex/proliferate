@@ -17,6 +17,7 @@
 ### Out of Scope
 - Sandbox provider internals (Modal/E2B implementation details, image contents, provider deployment) — see `sandbox-providers.md`.
 - Manager-specific runtime semantics (Pi manager identity, hidden transcript storage, inbox kinds, memory contract) — see `manager-agent-runtime.md`.
+- OpenCode ACP runtime transport, filesystem/terminal methods, slash commands, and legacy bridge retirement — see `opencode-acp.md`.
 - Tool schemas/prompt contract and capability policy — see `agent-contract.md`.
 - Automation run DAG, scheduling, and notification fanout — see `automations-runs.md`.
 - Repo/configuration CRUD and prebuild policy — see `repos-prebuilds.md`.

@@ -16,6 +16,7 @@
 
 ### Out of Scope
 - Snapshot resolution at sandbox boot (`resolveSnapshotId`) and provider boot semantics — see `sandbox-providers.md`.
+- Coder provider repo-to-workspace binding and provider settings — see `coder-provider.md`.
 - Session lifecycle orchestration (create/pause/resume/delete, WebSocket runtime) — see `sessions-gateway.md`.
 - Secret storage/encryption internals — see `secrets-environment.md`.
 - OAuth lifecycle and org-scoped connector management — see `integrations.md`.

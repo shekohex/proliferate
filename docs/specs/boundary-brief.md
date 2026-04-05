@@ -23,6 +23,8 @@
 | 12 | `auth-orgs.md` | better-auth, user/org/member model, invitations, onboarding/trial activation, API keys, admin/impersonation. | 3 |
 | 13 | `billing-metering.md` | Usage metering, credit gating, trial credits, reconciliation, org pause, Autumn integration. Owns charging/gating policy. | 3 |
 | 14 | `manager-agent-runtime.md` | Pi-based manager runtime identity, memory model, inbox semantics, child coding-session topology, and manager-specific execution rules. | 3 |
+| 15 | `coder-provider.md` | Coder control-plane integration, provider settings, template catalog sync, repo-to-workspace binding, and workspace bridge semantics. | 3 |
+| 16 | `opencode-acp.md` | OpenCode ACP session bootstrap, filesystem/terminal/slash-command methods, gateway runtime integration, and legacy bridge retirement. | 2 |
 
 ### Phase ordering
 
@@ -45,6 +47,9 @@ These boundaries resolve the most likely overlaps. Follow them exactly.
 | **LLM Proxy vs Billing** | `llm-proxy.md` owns key generation, routing, and spend *events*. `billing-metering.md` owns charging policy, credit gating, and balance enforcement. |
 | **Triggers vs Automations** | `triggers.md` owns event ingestion, matching, and dispatch. Once a trigger fires, the resulting automation run belongs to `automations-runs.md`. The handoff point is the `AUTOMATION_ENRICH` queue enqueue. |
 | **Sessions vs Sandbox Providers** | `sessions-gateway.md` owns the session lifecycle and gateway runtime. `sandbox-providers.md` owns the provider interface and sandbox boot mechanics. Sessions *calls* the provider interface; the provider spec defines the contract. |
+| **Coder Provider vs Sandbox Providers** | `sandbox-providers.md` owns the generic provider contract and shared lifecycle semantics. `coder-provider.md` owns Coder control-plane integration, template defaults, repo-to-workspace binding, and the workspace bridge. |
+| **OpenCode ACP vs Agent Contract** | `agent-contract.md` owns tool schemas and sandbox injection policy. `opencode-acp.md` owns ACP session/bootstrap, file/terminal/slash-command transport, and retirement of duplicate bridge-only operations. |
+| **OpenCode ACP vs Sessions** | `sessions-gateway.md` owns session lifecycle and reconnect policy. `opencode-acp.md` owns the ACP session transport and runtime protocol used by the gateway harness. |
 | **Sessions vs Manager Runtime** | `sessions-gateway.md` owns generic session/hub/runtime control-plane behavior. `manager-agent-runtime.md` owns the manager-specific runtime contract: transcript authority, memory root, inbox kinds, preemption, and child-session topology. |
 | **Manager Runtime vs Agent Contract** | `agent-contract.md` owns tool schemas and sandbox injection mechanics. `manager-agent-runtime.md` owns how the manager uses those tools, its quality rules, and its long-horizon memory/compaction contract. |
 | **Manager Runtime vs Sandbox Providers** | `sandbox-providers.md` owns sandbox boot/storage mechanics. `manager-agent-runtime.md` owns why the manager needs hidden transcript storage and a separate `$MANAGER_MEMORY_DIR`, but not how providers implement that. |

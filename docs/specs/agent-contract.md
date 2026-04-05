@@ -18,6 +18,7 @@
 ### Out of Scope
 - Gateway websocket/session runtime state machine (see `sessions-gateway.md`)
 - Provider boot internals and snapshot restoration mechanics (see `sandbox-providers.md`)
+- OpenCode ACP filesystem/terminal transport and legacy bridge retirement (see `opencode-acp.md`)
 - Automation run orchestration beyond the `automation.complete` interface (see `automations-runs.md`)
 - Secret CRUD, encryption, and env-file generation runtime (see `secrets-environment.md`)
 - LLM proxy key issuance and spend accounting (see `llm-proxy.md`)
