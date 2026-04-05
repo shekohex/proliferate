@@ -1,9 +1,13 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { withSentryConfig } from "@sentry/nextjs";
+import dotenv from "dotenv";
 
 const nextConfigDir = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(nextConfigDir, "../..");
+
+dotenv.config({ path: path.join(monorepoRoot, ".env") });
+dotenv.config({ path: path.join(monorepoRoot, ".env.local"), override: true });
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
