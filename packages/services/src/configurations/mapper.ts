@@ -22,6 +22,9 @@ export function toConfiguration(row: ConfigurationWithRelationsRow): Configurati
 		createdAt: toIsoString(row.createdAt),
 		createdBy: row.createdBy,
 		sandboxProvider: null, // Field removed from schema
+		coderTemplateId: row.coderTemplateId,
+		coderTemplateParameters:
+			(row.coderTemplateParameters as Array<{ name: string; value: string }> | null) ?? undefined,
 		refreshEnabled: row.refreshEnabled,
 		refreshIntervalMinutes: row.refreshIntervalMinutes,
 		lastRefreshedAt: toIsoString(row.lastRefreshedAt),
@@ -64,6 +67,9 @@ export function toConfigurationPartial(row: ConfigurationRow): Partial<Configura
 		createdAt: toIsoString(row.createdAt),
 		createdBy: row.createdBy,
 		sandboxProvider: null, // Field removed from schema
+		coderTemplateId: row.coderTemplateId,
+		coderTemplateParameters:
+			(row.coderTemplateParameters as Array<{ name: string; value: string }> | null) ?? undefined,
 		refreshEnabled: row.refreshEnabled,
 		refreshIntervalMinutes: row.refreshIntervalMinutes,
 		lastRefreshedAt: toIsoString(row.lastRefreshedAt),

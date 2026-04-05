@@ -13,6 +13,7 @@ import {
 	parseModelId,
 } from "@proliferate/shared";
 import type { ConfigurationServiceCommand } from "@proliferate/shared";
+import type { CoderTemplateParameterValue } from "@proliferate/shared/contracts/coder-provider";
 import type {
 	SessionOperatorStatus,
 	SessionRuntimeStatus,
@@ -87,6 +88,9 @@ export interface SessionContext {
 	snapshotHasDeps: boolean;
 	/** Resolved service commands (configuration-level or fallback from repos). */
 	serviceCommands?: ConfigurationServiceCommand[];
+	coderTemplateId?: string | null;
+	coderTemplateVersionPresetId?: string | null;
+	coderTemplateParameters?: CoderTemplateParameterValue[];
 	/** Initial prompt to auto-send after sandbox boot. */
 	initialPrompt?: string | null;
 }
@@ -247,6 +251,10 @@ export async function loadSessionContext(
 		{ configurationId: session.configuration_id },
 		"Loading repos from configuration_repos...",
 	);
+	const configInfo = await configurations.findByIdForSession(session.configuration_id);
+	if (!configInfo) {
+		throw new Error("Configuration not found");
+	}
 	const configurationReposStartMs = Date.now();
 	const configurationRepoRows = await configurations.getConfigurationReposWithDetails(
 		session.configuration_id,
@@ -404,7 +412,6 @@ export async function loadSessionContext(
 		snapshotHasDeps = true;
 	} else {
 		// Creation snapshot — check current configuration status
-		const configInfo = await configurations.findByIdForSession(session.configuration_id);
 		snapshotHasDeps = configInfo?.status === "ready";
 	}
 
@@ -430,6 +437,9 @@ export async function loadSessionContext(
 		secretFileWrites: envResult.fileWrites,
 		snapshotHasDeps,
 		serviceCommands: resolvedServiceCommands.length > 0 ? resolvedServiceCommands : undefined,
+		coderTemplateId: configInfo.coderTemplateId,
+		coderTemplateVersionPresetId: null,
+		coderTemplateParameters: configInfo.coderTemplateParameters ?? undefined,
 		initialPrompt: session.initial_prompt,
 	};
 }

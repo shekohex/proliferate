@@ -96,6 +96,7 @@ export class SessionRuntime {
 
 	private provider: SandboxProvider | null = null;
 	private runtimeBaseUrl: string | null = null;
+	private runtimeHeaders: Record<string, string> | undefined;
 	private openCodeSessionId: string | null = null;
 	private runtimeBindingId: string | null = null;
 	private serviceCommands: ConfigurationServiceCommand[] | undefined;
@@ -187,6 +188,7 @@ export class SessionRuntime {
 		}
 		await this.adapter.sendPrompt({
 			baseUrl: this.runtimeBaseUrl,
+			runtimeHeaders: this.runtimeHeaders,
 			sessionId: this.openCodeSessionId,
 			content,
 			images,
@@ -199,6 +201,7 @@ export class SessionRuntime {
 		}
 		await this.adapter.interrupt({
 			baseUrl: this.runtimeBaseUrl,
+			runtimeHeaders: this.runtimeHeaders,
 			sessionId: this.openCodeSessionId,
 		});
 	}
@@ -209,6 +212,7 @@ export class SessionRuntime {
 		}
 		const result = await this.adapter.collectOutputs({
 			baseUrl: this.runtimeBaseUrl,
+			runtimeHeaders: this.runtimeHeaders,
 			sessionId: this.openCodeSessionId,
 		});
 		return result.messages;
@@ -224,7 +228,9 @@ export class SessionRuntime {
 
 	isReady(): boolean {
 		const { live } = this.runtimeContext;
-		return Boolean(live.previewUrl && live.eventStreamConnected && this.openCodeSessionId);
+		return Boolean(
+			(live.openCodeUrl || live.previewUrl) && live.eventStreamConnected && this.openCodeSessionId,
+		);
 	}
 
 	isConnecting(): boolean {
@@ -342,6 +348,7 @@ export class SessionRuntime {
 	resetSandboxState(): void {
 		this.disconnectSse();
 		this.runtimeBaseUrl = null;
+		this.runtimeHeaders = undefined;
 		this.openCodeSessionId = null;
 		this.runtimeBindingId = null;
 		this.provider = null;
@@ -430,6 +437,10 @@ export class SessionRuntime {
 			const providerType = live.session.sandbox_provider as SandboxProviderType | undefined;
 			const provider = getSandboxProvider(providerType);
 			this.provider = provider;
+			this.runtimeHeaders =
+				provider.type === "coder" && this.env.coderSessionToken
+					? { Cookie: `coder_session_token=${this.env.coderSessionToken}` }
+					: undefined;
 			this.log("Using sandbox provider", { provider: provider.type });
 
 			// Derive per-session sandbox-mcp auth token and merge into env vars
@@ -456,6 +467,9 @@ export class SessionRuntime {
 				snapshotHasDeps: config.snapshotHasDeps,
 				serviceCommands: config.serviceCommands,
 				secretFileWrites: config.secretFileWrites,
+				coderTemplateId: config.coderTemplateId ?? undefined,
+				coderTemplateVersionPresetId: config.coderTemplateVersionPresetId ?? undefined,
+				coderTemplateParameters: config.coderTemplateParameters,
 			});
 			this.logLatency("runtime.ensure_ready.provider.ensure_sandbox", {
 				provider: provider.type,
@@ -529,7 +543,7 @@ export class SessionRuntime {
 			// ------------------------------------------------------------------
 			// Activate: ensure ACP session + connect SSE
 			// ------------------------------------------------------------------
-			this.runtimeBaseUrl = live.previewUrl;
+			this.runtimeBaseUrl = live.openCodeUrl ?? live.previewUrl;
 			this.serviceCommands = config.serviceCommands;
 			if (!this.runtimeBaseUrl) {
 				throw new Error("Missing sandbox runtime endpoint");
@@ -538,6 +552,7 @@ export class SessionRuntime {
 			const ensureAcpStartMs = Date.now();
 			const resumed = await this.adapter.resume({
 				baseUrl: this.runtimeBaseUrl,
+				runtimeHeaders: this.runtimeHeaders,
 				sessionId: live.openCodeSessionId ?? live.session.coding_agent_session_id,
 			});
 			this.openCodeSessionId = resumed.sessionId;
@@ -567,6 +582,7 @@ export class SessionRuntime {
 				codingHarness: this.adapter,
 				runtimeBaseUrl: this.runtimeBaseUrl,
 				authToken: sseAuthToken,
+				runtimeHeaders: this.runtimeHeaders,
 				afterSeq: live.lastRuntimeSourceSeq ?? undefined,
 				bindingId: this.runtimeBindingId,
 				env: this.env,

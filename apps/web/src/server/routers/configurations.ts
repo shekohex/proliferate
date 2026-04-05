@@ -97,6 +97,8 @@ export const configurationsRouter = {
 					repoIds: input.repoIds,
 					legacyRepos: input.repos,
 					name: input.name,
+					coderTemplateId: input.coderTemplateId,
+					coderTemplateParameters: input.coderTemplateParameters,
 				});
 
 				return {
@@ -120,12 +122,15 @@ export const configurationsRouter = {
 		)
 		.output(z.object({ configuration: ConfigurationSchema }))
 		.handler(async ({ input, context }) => {
-			const { id, name, notes, routingDescription } = input;
+			const { id, name, notes, routingDescription, coderTemplateId, coderTemplateParameters } =
+				input;
 			try {
 				const configuration = await configurations.updateConfigurationForOrg(id, context.orgId, {
 					name,
 					notes,
 					routingDescription,
+					coderTemplateId,
+					coderTemplateParameters,
 				});
 				return { configuration };
 			} catch (error) {

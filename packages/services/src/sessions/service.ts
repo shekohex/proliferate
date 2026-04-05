@@ -639,6 +639,24 @@ async function createConfigurationSession(input: {
 	// Resolve primary repo from configuration
 	const primaryRepoId = configurationRepos[0]?.repo?.id ?? null;
 
+	if (sessionType === "setup" && primaryRepoId) {
+		const existingSetupSession = await sessionsDb.findActiveSetupSessionByRepoId(
+			orgId,
+			primaryRepoId,
+		);
+		if (existingSetupSession) {
+			reqLog.info({ existingSessionId: existingSetupSession.id }, "Reusing active setup session");
+			return {
+				sessionId: existingSetupSession.id,
+				doUrl: `${gatewayUrl}/session/${existingSetupSession.id}`,
+				tunnelUrl: existingSetupSession.openCodeTunnelUrl ?? null,
+				previewUrl: existingSetupSession.previewTunnelUrl ?? null,
+				sandboxId: existingSetupSession.sandboxId ?? null,
+				warning: "Reused existing setup session for this repository.",
+			};
+		}
+	}
+
 	// Create session record and return immediately.
 	// Sandbox provisioning is handled by the gateway when the client connects.
 	await createSessionWithAdmission(orgId, {

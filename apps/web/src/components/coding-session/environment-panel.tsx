@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCheckSecrets } from "@/hooks/org/use-repos";
 import { useCreateSecret, useDeleteSecret, useSecrets } from "@/hooks/org/use-secrets";
 import { useConfiguration } from "@/hooks/sessions/use-configurations";
+import { useCoderTemplate } from "@/hooks/settings/use-coder-provider";
 import { orpc } from "@/lib/infra/orpc";
 import { usePreviewPanelStore } from "@/stores/preview-panel";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -450,6 +451,10 @@ export function EnvironmentPanel({
 	const shouldLoadConfiguration =
 		!!configurationId && !(workspaceOptionsProp && workspaceOptionsProp.length > 0);
 	const { data: configuration } = useConfiguration(configurationId ?? "", shouldLoadConfiguration);
+	const { data: coderTemplate } = useCoderTemplate(
+		configuration?.coderTemplateId ?? null,
+		Boolean(configuration?.coderTemplateId),
+	);
 
 	const configurationWorkspaceOptions = useMemo(() => {
 		const repos = configuration?.configurationRepos ?? [];
@@ -480,7 +485,7 @@ export function EnvironmentPanel({
 			: configurationWorkspaceOptions;
 
 	// Parse spec keys
-	const specKeys = useMemo(() => {
+	const specKeys = (() => {
 		if (!envFiles || !Array.isArray(envFiles)) return [];
 		const keys: Array<{ key: string; required: boolean }> = [];
 		for (const file of envFiles as EnvFileSpec[]) {
@@ -489,7 +494,7 @@ export function EnvironmentPanel({
 			}
 		}
 		return keys;
-	}, [envFiles]);
+	})();
 
 	const specKeyNames = useMemo(() => specKeys.map((k) => k.key), [specKeys]);
 
@@ -575,6 +580,23 @@ export function EnvironmentPanel({
 					<div className="p-3 space-y-3">
 						{isSetupSession ? (
 							<>
+								{configuration?.coderTemplateId ? (
+									<div className="rounded-md border border-border/70 bg-muted/20 p-3 space-y-1.5">
+										<p className="text-xs font-medium">Coder template saved to this environment</p>
+										<p className="text-[11px] text-muted-foreground">
+											{coderTemplate?.displayName ||
+												coderTemplate?.name ||
+												configuration.coderTemplateId}
+										</p>
+										{(configuration.coderTemplateParameters?.length ?? 0) > 0 ? (
+											<p className="text-[11px] text-muted-foreground">
+												{configuration.coderTemplateParameters?.length} parameter
+												{configuration.coderTemplateParameters?.length === 1 ? "" : "s"} configured
+											</p>
+										) : null}
+									</div>
+								) : null}
+
 								<div className="rounded-md border border-border/70 bg-muted/20 p-3 space-y-2">
 									<div className="flex items-start gap-2">
 										<FileLock2 className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />

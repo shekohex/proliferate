@@ -58,6 +58,25 @@ export {
 	UpdateConfigurationInputSchema,
 } from "./configurations";
 
+export type {
+	CoderProviderSettings,
+	CoderTemplatePreset,
+	CoderTemplateDetail,
+	CoderTemplateParameterValue,
+	CoderTemplateSummary,
+	CoderTemplateVariable,
+	UpdateCoderProviderSettingsInput,
+} from "./coder-provider";
+export {
+	CoderProviderSettingsSchema,
+	CoderTemplatePresetSchema,
+	CoderTemplateDetailSchema,
+	CoderTemplateParameterValueSchema,
+	CoderTemplateSummarySchema,
+	CoderTemplateVariableSchema,
+	UpdateCoderProviderSettingsInputSchema,
+} from "./coder-provider";
+
 // Re-export onboarding types
 export type {
 	OnboardingRepo,

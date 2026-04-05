@@ -10,6 +10,7 @@ import { authRouter } from "./auth";
 import { automationsRouter } from "./automations";
 import { baselinesRouter } from "./baselines";
 import { billingRouter } from "./billing";
+import { coderProviderRouter } from "./coder-provider";
 import { configurationsRouter } from "./configurations";
 import { integrationsRouter } from "./integrations";
 import { intercomRouter } from "./intercom";
@@ -38,6 +39,7 @@ export const appRouter = {
 	onboarding: onboardingRouter,
 	orgs: orgsRouter,
 	configurations: configurationsRouter,
+	coderProvider: coderProviderRouter,
 	repos: reposRouter,
 	schedules: schedulesRouter,
 	secretFiles: secretFilesRouter,

@@ -14,6 +14,8 @@ export interface CreateConfigurationInput {
 	name?: string | null;
 	createdBy: string;
 	sandboxProvider?: string;
+	coderTemplateId?: string | null;
+	coderTemplateParameters?: Array<{ name: string; value: string }>;
 }
 
 export interface CreateConfigurationRepoInput {
@@ -28,6 +30,8 @@ export interface UpdateConfigurationInput {
 	routingDescription?: string | null;
 	snapshotId?: string;
 	status?: string;
+	coderTemplateId?: string | null;
+	coderTemplateParameters?: Array<{ name: string; value: string }>;
 }
 
 export interface CreateConfigurationFullInput {
@@ -38,6 +42,8 @@ export interface CreateConfigurationFullInput {
 	notes?: string | null;
 	createdBy: string;
 	sandboxProvider?: string;
+	coderTemplateId?: string | null;
+	coderTemplateParameters?: Array<{ name: string; value: string }>;
 }
 
 // ============================================

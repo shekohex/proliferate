@@ -26,6 +26,7 @@
 		"./contracts/cli": "./src/contracts/cli.ts",
 		"./contracts/common": "./src/contracts/common.ts",
 		"./contracts/configurations": "./src/contracts/configurations.ts",
+		"./contracts/coder-provider": "./src/contracts/coder-provider.ts",
 		"./contracts/errors": "./src/contracts/errors.ts",
 		"./contracts/harness": "./src/contracts/harness.ts",
 		"./contracts/integrations": "./src/contracts/integrations.ts",
@@ -55,6 +56,7 @@
 		"test:watch": "vitest"
 	},
 	"dependencies": {
+		"@coder/sdk": "workspace:*",
 		"@proliferate/db": "workspace:*",
 		"@proliferate/environment": "workspace:*",
 		"@proliferate/logger": "workspace:*",

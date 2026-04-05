@@ -1,5 +1,6 @@
 import type { AgentConfig, RepoSpec } from "@proliferate/shared";
 import type { ConfigurationServiceCommand } from "@proliferate/shared";
+import type { CoderTemplateParameterValue } from "@proliferate/shared/contracts/coder-provider";
 import type { GitIdentity } from "../git-identity";
 import type { RepoRecord, SessionContext, SessionRecord } from "../session-context-store";
 
@@ -19,6 +20,9 @@ export interface SessionConfig {
 	readonly secretFileWrites: Array<{ filePath: string; content: string }>;
 	readonly snapshotHasDeps: boolean;
 	readonly serviceCommands?: ConfigurationServiceCommand[];
+	readonly coderTemplateId?: string | null;
+	readonly coderTemplateVersionPresetId?: string | null;
+	readonly coderTemplateParameters?: CoderTemplateParameterValue[];
 	readonly initialPrompt?: string | null;
 }
 
@@ -50,6 +54,9 @@ export function toLegacySessionContext(runtimeContext: SessionRuntimeContext): S
 		secretFileWrites: runtimeContext.config.secretFileWrites,
 		snapshotHasDeps: runtimeContext.config.snapshotHasDeps,
 		serviceCommands: runtimeContext.config.serviceCommands,
+		coderTemplateId: runtimeContext.config.coderTemplateId,
+		coderTemplateVersionPresetId: runtimeContext.config.coderTemplateVersionPresetId,
+		coderTemplateParameters: runtimeContext.config.coderTemplateParameters,
 		initialPrompt: runtimeContext.config.initialPrompt,
 	};
 }

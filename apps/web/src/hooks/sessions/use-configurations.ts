@@ -7,12 +7,16 @@ interface CreateConfigurationInput {
 	repoIds?: string[];
 	repos?: Array<{ repoId: string; workspacePath?: string }>;
 	name?: string;
+	coderTemplateId?: string;
+	coderTemplateParameters?: Array<{ name: string; value: string }>;
 }
 
 interface UpdateConfigurationInput {
 	name?: string;
 	notes?: string;
 	routingDescription?: string | null;
+	coderTemplateId?: string | null;
+	coderTemplateParameters?: Array<{ name: string; value: string }>;
 }
 
 export function useConfigurations(status?: string) {
@@ -59,8 +63,11 @@ export function useUpdateConfiguration() {
 
 	const mutation = useMutation({
 		...orpc.configurations.update.mutationOptions(),
-		onSuccess: () => {
+		onSuccess: (_data, input) => {
 			queryClient.invalidateQueries({ queryKey: orpc.configurations.list.key() });
+			queryClient.invalidateQueries({
+				queryKey: orpc.configurations.get.key({ input: { id: input.id } }),
+			});
 		},
 	});
 

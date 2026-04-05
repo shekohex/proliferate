@@ -41,6 +41,7 @@ export function getEnvStatus(env: NodeJS.ProcessEnv = process.env): EnvStatus {
 		env.LLM_PROXY_REQUIRED === "true" ||
 		env.LLM_PROXY_REQUIRED === "1" ||
 		Boolean(env.LLM_PROXY_URL);
+	const defaultSandboxProvider = env.DEFAULT_SANDBOX_PROVIDER ?? "e2b";
 
 	const missing: EnvRequirement[] = [];
 
@@ -57,7 +58,7 @@ export function getEnvStatus(env: NodeJS.ProcessEnv = process.env): EnvStatus {
 	requireKey("GATEWAY_JWT_SECRET", "Signs user WebSocket auth JWTs for the gateway", "core", true);
 	requireKey("USER_SECRETS_ENCRYPTION_KEY", "Encrypts user secrets at rest", "core", true);
 	requireKey("BETTER_AUTH_SECRET", "Auth session signing secret", "core", true);
-	requireKey("DEFAULT_SANDBOX_PROVIDER", "Sandbox provider (e2b)", "core");
+	requireKey("DEFAULT_SANDBOX_PROVIDER", "Sandbox provider (e2b or coder)", "core");
 	requireKey("ANTHROPIC_API_KEY", "Claude API key (direct or for LLM proxy)", "core", true);
 
 	if (profile === "self_host") {
@@ -66,11 +67,15 @@ export function getEnvStatus(env: NodeJS.ProcessEnv = process.env): EnvStatus {
 		requireKey("NEXT_PUBLIC_GATEWAY_URL", "Public gateway URL (build/runtime)", "core");
 	}
 
-	// E2B sandbox provider requirements
-	requireKey("E2B_API_KEY", "E2B API key", "feature", true);
-	requireKey("E2B_DOMAIN", "E2B API domain", "feature");
-	requireKey("E2B_TEMPLATE", "E2B template name", "feature");
-	requireKey("E2B_TEMPLATE_ALIAS", "E2B template alias", "feature");
+	if (defaultSandboxProvider === "coder") {
+		requireKey("CODER_URL", "Coder API URL", "feature");
+		requireKey("CODER_SESSION_TOKEN", "Coder session token", "feature", true);
+	} else {
+		requireKey("E2B_API_KEY", "E2B API key", "feature", true);
+		requireKey("E2B_DOMAIN", "E2B API domain", "feature");
+		requireKey("E2B_TEMPLATE", "E2B template name", "feature");
+		requireKey("E2B_TEMPLATE_ALIAS", "E2B template alias", "feature");
+	}
 
 	// LLM proxy requirements (if enabled)
 	if (llmProxyEnabled) {

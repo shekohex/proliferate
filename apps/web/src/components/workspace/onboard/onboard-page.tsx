@@ -5,14 +5,16 @@ import { useRepos } from "@/hooks/org/use-repos";
 import { useSecrets } from "@/hooks/org/use-secrets";
 import { useCreateSecret } from "@/hooks/org/use-secrets";
 import { useCreateBaseline, useLatestSetupSession } from "@/hooks/sessions/use-baselines";
-import { useCreateConfiguration } from "@/hooks/sessions/use-configurations";
+import { useConfiguration, useCreateConfiguration } from "@/hooks/sessions/use-configurations";
 import { useCreateSession } from "@/hooks/sessions/use-sessions";
+import { useCoderProviderSettings } from "@/hooks/settings/use-coder-provider";
 import { useDashboardStore } from "@/stores/dashboard";
 import { getSetupInitialPrompt } from "@proliferate/shared/prompts";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { CoderTemplateEditor, type CoderTemplateSelection } from "./coder-template-editor";
 import { RepoPicker } from "./repo-picker";
 import { SecretsEditor } from "./secrets-editor";
 
@@ -27,17 +29,43 @@ export function OnboardPage() {
 
 	const [selectedRepoId, setSelectedRepoId] = useState<string | null>(preSelectedRepoId);
 	const [newSecrets, setNewSecrets] = useState<Array<{ key: string; value: string }>>([]);
+	const [coderTemplateSelection, setCoderTemplateSelection] = useState<CoderTemplateSelection>({
+		templateId: null,
+		presetId: null,
+		parameters: [],
+	});
 	const [isStarting, setIsStarting] = useState(false);
 
 	const createBaseline = useCreateBaseline();
 	const createConfiguration = useCreateConfiguration();
 	const createSession = useCreateSession();
 	const createSecret = useCreateSecret();
+	const { data: coderSettings } = useCoderProviderSettings();
 
 	const { data: existingSetupSession } = useLatestSetupSession(
 		selectedRepoId ?? "",
 		!!selectedRepoId,
 	);
+	const selectedRepo = useMemo(
+		() => (repos ?? []).find((repo) => repo.id === selectedRepoId) ?? null,
+		[repos, selectedRepoId],
+	);
+	const { data: selectedConfiguration } = useConfiguration(
+		selectedRepo?.configurationId ?? "",
+		Boolean(selectedRepo?.configurationId),
+	);
+	const requiresCoderTemplate = coderSettings?.enabled ?? false;
+	const initialCoderTemplateSelection = useMemo<CoderTemplateSelection | null>(() => {
+		if (!selectedConfiguration?.coderTemplateId) {
+			return null;
+		}
+
+		return {
+			templateId: selectedConfiguration.coderTemplateId,
+			presetId: null,
+			parameters: selectedConfiguration.coderTemplateParameters ?? [],
+		};
+	}, [selectedConfiguration]);
 
 	useEffect(() => {
 		if (!existingSetupSession?.id) return;
@@ -59,6 +87,11 @@ export function OnboardPage() {
 			return;
 		}
 
+		if (requiresCoderTemplate && !coderTemplateSelection.templateId) {
+			toast.error("Please choose a Coder template before starting setup");
+			return;
+		}
+
 		setIsStarting(true);
 		try {
 			// Persist any new secrets the user entered
@@ -76,6 +109,11 @@ export function OnboardPage() {
 
 			const configResult = await createConfiguration.mutateAsync({
 				repoIds: [selectedRepoId],
+				coderTemplateId: coderTemplateSelection.templateId ?? undefined,
+				coderTemplateParameters:
+					coderTemplateSelection.parameters.length > 0
+						? coderTemplateSelection.parameters
+						: undefined,
 			});
 
 			const sessionResult = await createSession.mutateAsync({
@@ -147,6 +185,11 @@ export function OnboardPage() {
 							secrets={newSecrets}
 							onChange={setNewSecrets}
 							existingCount={existingSecrets.length}
+						/>
+
+						<CoderTemplateEditor
+							initialSelection={initialCoderTemplateSelection}
+							onChange={setCoderTemplateSelection}
 						/>
 					</div>
 				</div>

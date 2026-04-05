@@ -832,6 +832,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@coder/sdk':
+        specifier: workspace:*
+        version: link:../codersdk
       '@proliferate/db':
         specifier: workspace:*
         version: link:../db

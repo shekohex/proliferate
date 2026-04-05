@@ -102,6 +102,7 @@ export interface CodingHarnessPromptImage {
 export interface CodingHarnessStartInput {
 	baseUrl: string;
 	authToken?: string;
+	runtimeHeaders?: Record<string, string>;
 	title?: string;
 }
 
@@ -112,6 +113,7 @@ export interface CodingHarnessStartResult {
 export interface CodingHarnessResumeInput {
 	baseUrl: string;
 	authToken?: string;
+	runtimeHeaders?: Record<string, string>;
 	sessionId?: string | null;
 	title?: string;
 }
@@ -124,18 +126,21 @@ export interface CodingHarnessResumeResult {
 export interface CodingHarnessInterruptInput {
 	baseUrl: string;
 	authToken?: string;
+	runtimeHeaders?: Record<string, string>;
 	sessionId: string;
 }
 
 export interface CodingHarnessShutdownInput {
 	baseUrl: string;
 	authToken?: string;
+	runtimeHeaders?: Record<string, string>;
 	sessionId: string;
 }
 
 export interface CodingHarnessSendPromptInput {
 	baseUrl: string;
 	authToken?: string;
+	runtimeHeaders?: Record<string, string>;
 	sessionId: string;
 	content: string;
 	images?: CodingHarnessPromptImage[];
@@ -144,6 +149,7 @@ export interface CodingHarnessSendPromptInput {
 export interface CodingHarnessCollectOutputsInput {
 	baseUrl: string;
 	authToken?: string;
+	runtimeHeaders?: Record<string, string>;
 	sessionId: string;
 }
 

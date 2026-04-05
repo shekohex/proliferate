@@ -2,7 +2,7 @@
 
 > **Purpose:** Single source of truth for every product feature, its implementation status, and which spec owns it.
 > **Status key:** `Implemented` | `Partial` | `Planned` | `Deprecated`
-> **Updated:** 2026-04-05. Coder provider integration spec added.
+> **Updated:** 2026-04-05. Added the first Coder provider adapter slice.
 > **Evidence convention:** `Planned` entries may cite RFC/spec files until code exists; once implemented, update evidence to concrete code paths.
 
 ---
@@ -50,10 +50,10 @@
 
 | Feature | Status | Evidence | Notes |
 |---------|--------|----------|-------|
-| Coder provider adapter | Planned | `docs/specs/coder-provider.md` | Workspace lifecycle adapter on top of Coder control plane |
-| Coder provider settings surface | Planned | `docs/specs/coder-provider.md` | Org-scoped host/auth/template settings |
-| Template catalog sync | Planned | `docs/specs/coder-provider.md` | Fetch supported templates and parameter shapes |
-| Per-template defaults | Planned | `docs/specs/coder-provider.md` | Store default values for template parameters |
+| Coder provider adapter | Partial | `packages/shared/src/providers/coder.ts`, `packages/shared/src/providers/index.ts`, `packages/db/drizzle/0063_add_coder_provider_type.sql` | Env-backed control-plane slice only; runtime IO, snapshots, and pause parity are still stubbed |
+| Coder provider settings surface | Partial | `apps/web/src/components/settings/environments/coder-settings-section.tsx`, `packages/services/src/coder/index.ts`, `packages/services/src/coder/db.ts` | Org-scoped default template, preset, and parameter defaults persisted on `organization.coder_settings` |
+| Template catalog sync | Partial | `packages/services/src/coder/index.ts`, `apps/web/src/server/routers/coder-provider.ts`, `packages/shared/src/providers/coder.ts` | Live rich-parameter fetch from the configured Coder control plane |
+| Per-template defaults | Partial | `apps/web/src/components/workspace/onboard/coder-template-editor.tsx`, `apps/web/src/components/settings/environments/coder-template-settings-section.tsx`, `packages/services/src/configurations/service.ts` | Repo/environment creation and later edits can override dynamic Coder template parameters and persist them on the configuration |
 | Repo-to-workspace binding | Planned | `docs/specs/coder-provider.md` | Map GitHub repos to prewarmed or reusable workspaces |
 | Workspace bridge helper | Planned | `docs/specs/coder-provider.md` | File/command/env/tunnel parity via helper daemon or SSH/PTTY |
 

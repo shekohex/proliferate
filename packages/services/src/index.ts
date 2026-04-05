@@ -18,6 +18,7 @@ export * as integrations from "./integrations";
 export * as onboarding from "./onboarding";
 export * as orgs from "./orgs";
 export * as configurations from "./configurations";
+export * as coder from "./coder";
 export * as repos from "./repos";
 export * as runs from "./runs";
 export * as schedules from "./schedules";

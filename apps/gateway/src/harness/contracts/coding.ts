@@ -29,6 +29,7 @@ export type {
 export interface CodingHarnessStreamInput {
 	baseUrl: string;
 	authToken?: string;
+	runtimeHeaders?: Record<string, string>;
 	afterSeq?: number;
 	bindingId: string;
 	env: GatewayEnv;

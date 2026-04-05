@@ -3,8 +3,9 @@
  */
 
 import type { AgentConfig } from "../agents";
+import type { CoderTemplateParameterValue } from "../contracts/coder-provider";
 
-export type SandboxProviderType = "e2b";
+export type SandboxProviderType = "e2b" | "coder";
 
 /**
  * Represents file content read from the sandbox filesystem.
@@ -83,6 +84,9 @@ export interface CreateSandboxOpts {
 	serviceCommands?: ConfigurationServiceCommand[];
 	/** Decrypted secret file writes to materialize inside /home/user/workspace at boot. */
 	secretFileWrites?: Array<{ filePath: string; content: string }>;
+	coderTemplateId?: string;
+	coderTemplateVersionPresetId?: string | null;
+	coderTemplateParameters?: CoderTemplateParameterValue[];
 }
 
 export interface CreateSandboxResult {

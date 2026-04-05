@@ -232,6 +232,7 @@ export const organization = pgTable(
 		graceExpiresAt: timestamp("grace_expires_at", { withTimezone: true, mode: "date" }),
 		onboardingMeta: jsonb("onboarding_meta"),
 		actionModes: jsonb("action_modes"),
+		coderSettings: jsonb("coder_settings"),
 		// Overage + reconciliation fields (Phase 1.2)
 		overageUsedCents: integer("overage_used_cents").default(0).notNull(),
 		overageCycleMonth: text("overage_cycle_month"),
@@ -338,6 +339,8 @@ export const configurations = pgTable(
 		name: text().notNull(),
 		notes: text(),
 		routingDescription: text("routing_description"),
+		coderTemplateId: text("coder_template_id"),
+		coderTemplateParameters: jsonb("coder_template_parameters"),
 		createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow(),
 		sandboxProvider: text("sandbox_provider").default("e2b").notNull(),
 		userId: text("user_id"),
@@ -386,7 +389,7 @@ export const configurations = pgTable(
 		unique("configurations_user_path_unique").on(table.userId, table.localPathHash),
 		check(
 			"configurations_sandbox_provider_check",
-			sql`sandbox_provider = ANY (ARRAY['modal'::text, 'e2b'::text])`,
+			sql`sandbox_provider = ANY (ARRAY['modal'::text, 'e2b'::text, 'coder'::text])`,
 		),
 		check(
 			"configurations_cli_requires_path",
@@ -1583,7 +1586,7 @@ export const sessions = pgTable(
 		}).onDelete("cascade"),
 		check(
 			"sessions_sandbox_provider_check",
-			sql`sandbox_provider = ANY (ARRAY['modal'::text, 'e2b'::text])`,
+			sql`sandbox_provider = ANY (ARRAY['modal'::text, 'e2b'::text, 'coder'::text])`,
 		),
 		check(
 			"sessions_kind_check",

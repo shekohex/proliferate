@@ -71,19 +71,24 @@ export class SandboxAgentV2CodingHarnessAdapter implements CodingHarnessAdapter 
 
 	async start(input: CodingHarnessStartInput): Promise<CodingHarnessStartResult> {
 		const serverId = generateServerId();
-		const agentSessionId = await createAcpSession(input.baseUrl, serverId, this.agentName);
+		const agentSessionId = await createAcpSession(
+			input.baseUrl,
+			serverId,
+			this.agentName,
+			input.runtimeHeaders,
+		);
 		agentSessionIds.set(serverId, agentSessionId);
 		return { sessionId: serverId };
 	}
 
 	async resume(input: CodingHarnessResumeInput): Promise<CodingHarnessResumeResult> {
 		// Wait for sandbox-agent to be ready (it starts async during bootstrap)
-		await waitForAcpReady(input.baseUrl);
+		await waitForAcpReady(input.baseUrl, input.runtimeHeaders);
 
 		// If we have a known serverId, try to reuse it
 		if (input.sessionId) {
 			try {
-				const sessions = await listAcpSessions(input.baseUrl);
+				const sessions = await listAcpSessions(input.baseUrl, input.runtimeHeaders);
 				const exists = sessions.some((s) => s.serverId === input.sessionId);
 				if (exists) {
 					return { sessionId: input.sessionId, mode: "reused" };
@@ -97,7 +102,7 @@ export class SandboxAgentV2CodingHarnessAdapter implements CodingHarnessAdapter 
 
 		// Check for any existing sessions to adopt
 		try {
-			const sessions = await listAcpSessions(input.baseUrl);
+			const sessions = await listAcpSessions(input.baseUrl, input.runtimeHeaders);
 			if (sessions.length > 0) {
 				return { sessionId: sessions[0].serverId, mode: "adopted" };
 			}
@@ -109,6 +114,7 @@ export class SandboxAgentV2CodingHarnessAdapter implements CodingHarnessAdapter 
 		const created = await this.start({
 			baseUrl: input.baseUrl,
 			authToken: input.authToken,
+			runtimeHeaders: input.runtimeHeaders,
 			title: input.title,
 		});
 		return { sessionId: created.sessionId, mode: "created" };
@@ -121,16 +127,17 @@ export class SandboxAgentV2CodingHarnessAdapter implements CodingHarnessAdapter 
 			input.sessionId,
 			input.content,
 			agentSessionId,
+			input.runtimeHeaders,
 			input.images,
 		);
 	}
 
 	async interrupt(input: CodingHarnessInterruptInput): Promise<void> {
-		await interruptAcpSession(input.baseUrl, input.sessionId);
+		await interruptAcpSession(input.baseUrl, input.sessionId, input.runtimeHeaders);
 	}
 
 	async shutdown(input: CodingHarnessShutdownInput): Promise<void> {
-		await closeAcpSession(input.baseUrl, input.sessionId);
+		await closeAcpSession(input.baseUrl, input.sessionId, input.runtimeHeaders);
 	}
 
 	async streamEvents(input: CodingHarnessStreamInput): Promise<CodingHarnessEventStreamHandle> {
@@ -147,6 +154,7 @@ export class SandboxAgentV2CodingHarnessAdapter implements CodingHarnessAdapter 
 			eventPath: `/v1/acp/${encodeURIComponent(serverId)}`,
 			headers: {
 				Accept: "text/event-stream",
+				...(input.runtimeHeaders ?? {}),
 			},
 			parseEventData: (data) => JSON.parse(data) as AcpJsonRpcEvent,
 			logSummary: (event) => ({
@@ -202,7 +210,10 @@ export class SandboxAgentV2CodingHarnessAdapter implements CodingHarnessAdapter 
 			env: input.env,
 			logger: input.logger.child({ stream: "platform" }),
 			eventPath: platformEventPath,
-			headers: input.authToken ? { Authorization: `Bearer ${input.authToken}` } : undefined,
+			headers: {
+				...(input.runtimeHeaders ?? {}),
+				...(input.authToken ? { Authorization: `Bearer ${input.authToken}` } : {}),
+			},
 			parseEventData: (data) => JSON.parse(data) as DaemonSseEvent,
 			logSummary: (event) => {
 				if (!isDaemonEnvelope(event)) {

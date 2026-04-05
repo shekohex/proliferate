@@ -417,6 +417,41 @@
       "when": 1773145600000,
       "tag": "0060_snapshot_refresh",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1773232000000,
+      "tag": "0061_adhoc_manager_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1773318400000,
+      "tag": "0062_backfill_billing_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1775408783026,
+      "tag": "0063_add_coder_provider_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1775413030383,
+      "tag": "0064_coder_template_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1775414503165,
+      "tag": "0065_coder_org_settings",
+      "breakpoints": true
     }
   ]
 }

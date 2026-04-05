@@ -11,6 +11,20 @@ function withAcpUrl(baseUrl: string, path: string): string {
 	return `${baseUrl}${path}`;
 }
 
+function mergeHeaders(
+	runtimeHeaders: Record<string, string> | undefined,
+	headers?: Record<string, string>,
+): Record<string, string> | undefined {
+	if (!runtimeHeaders && !headers) {
+		return undefined;
+	}
+
+	return {
+		...(runtimeHeaders ?? {}),
+		...(headers ?? {}),
+	};
+}
+
 export interface AcpSessionInfo {
 	serverId: string;
 	agent?: string;
@@ -24,6 +38,7 @@ export async function createAcpSession(
 	baseUrl: string,
 	serverId: string,
 	agent: string,
+	runtimeHeaders?: Record<string, string>,
 	cwd = "/home/user/workspace",
 ): Promise<string> {
 	const acpUrl = (path: string) => withAcpUrl(baseUrl, path);
@@ -34,7 +49,7 @@ export async function createAcpSession(
 	);
 	const initResponse = await fetch(initUrl, {
 		method: "POST",
-		headers: { "Content-Type": "application/json" },
+		headers: mergeHeaders(runtimeHeaders, { "Content-Type": "application/json" }),
 		body: JSON.stringify({
 			jsonrpc: "2.0",
 			id: 1,
@@ -52,7 +67,7 @@ export async function createAcpSession(
 	const sessionUrl = acpUrl(`/v1/acp/${encodeURIComponent(serverId)}`);
 	const sessionResponse = await fetch(sessionUrl, {
 		method: "POST",
-		headers: { "Content-Type": "application/json" },
+		headers: mergeHeaders(runtimeHeaders, { "Content-Type": "application/json" }),
 		body: JSON.stringify({
 			jsonrpc: "2.0",
 			id: 2,
@@ -85,6 +100,7 @@ export async function sendAcpPrompt(
 	serverId: string,
 	content: string,
 	agentSessionId?: string,
+	runtimeHeaders?: Record<string, string>,
 	_images?: Array<{ data: string; mediaType: string }>,
 ): Promise<void> {
 	const url = withAcpUrl(baseUrl, `/v1/acp/${encodeURIComponent(serverId)}`);
@@ -94,7 +110,7 @@ export async function sendAcpPrompt(
 	// comes via the SSE stream. We only check the initial HTTP status.
 	const promptPromise = fetch(url, {
 		method: "POST",
-		headers: { "Content-Type": "application/json" },
+		headers: mergeHeaders(runtimeHeaders, { "Content-Type": "application/json" }),
 		body: JSON.stringify({
 			jsonrpc: "2.0",
 			id: crypto.randomUUID(),
@@ -123,11 +139,15 @@ export async function sendAcpPrompt(
 /**
  * Interrupt (cancel) the current ACP session turn via `session/cancel`.
  */
-export async function interruptAcpSession(baseUrl: string, serverId: string): Promise<void> {
+export async function interruptAcpSession(
+	baseUrl: string,
+	serverId: string,
+	runtimeHeaders?: Record<string, string>,
+): Promise<void> {
 	const url = withAcpUrl(baseUrl, `/v1/acp/${encodeURIComponent(serverId)}`);
 	const response = await fetch(url, {
 		method: "POST",
-		headers: { "Content-Type": "application/json" },
+		headers: mergeHeaders(runtimeHeaders, { "Content-Type": "application/json" }),
 		body: JSON.stringify({
 			jsonrpc: "2.0",
 			method: "session/cancel",
@@ -144,10 +164,15 @@ export async function interruptAcpSession(baseUrl: string, serverId: string): Pr
 /**
  * Close (delete) the ACP session.
  */
-export async function closeAcpSession(baseUrl: string, serverId: string): Promise<void> {
+export async function closeAcpSession(
+	baseUrl: string,
+	serverId: string,
+	runtimeHeaders?: Record<string, string>,
+): Promise<void> {
 	const url = withAcpUrl(baseUrl, `/v1/acp/${encodeURIComponent(serverId)}`);
 	const response = await fetch(url, {
 		method: "DELETE",
+		headers: mergeHeaders(runtimeHeaders),
 		signal: AbortSignal.timeout(mutationTimeoutMs),
 	});
 	if (!response.ok) {
@@ -159,9 +184,13 @@ export async function closeAcpSession(baseUrl: string, serverId: string): Promis
 /**
  * List active ACP sessions.
  */
-export async function listAcpSessions(baseUrl: string): Promise<AcpSessionInfo[]> {
+export async function listAcpSessions(
+	baseUrl: string,
+	runtimeHeaders?: Record<string, string>,
+): Promise<AcpSessionInfo[]> {
 	const url = withAcpUrl(baseUrl, "/v1/acp");
 	const response = await fetch(url, {
+		headers: mergeHeaders(runtimeHeaders),
 		signal: AbortSignal.timeout(lookupTimeoutMs),
 	});
 	if (!response.ok) {
@@ -191,6 +220,7 @@ export function logAcpLookupError(error: unknown, context: Record<string, unknow
  */
 export async function waitForAcpReady(
 	baseUrl: string,
+	runtimeHeaders?: Record<string, string>,
 	maxAttempts = 15,
 	initialDelayMs = 500,
 ): Promise<void> {
@@ -200,6 +230,7 @@ export async function waitForAcpReady(
 		try {
 			const url = withAcpUrl(baseUrl, "/v1/acp");
 			const response = await fetch(url, {
+				headers: mergeHeaders(runtimeHeaders),
 				signal: AbortSignal.timeout(3_000),
 			});
 			if (response.ok) {

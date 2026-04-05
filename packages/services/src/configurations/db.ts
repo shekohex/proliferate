@@ -85,6 +85,8 @@ export interface ConfigurationForSessionRow {
 	id: string;
 	snapshotId: string | null;
 	sandboxProvider: string | null;
+	coderTemplateId: string | null;
+	coderTemplateParameters: Array<{ name: string; value: string }> | null;
 	status: string | null;
 }
 
@@ -316,6 +318,8 @@ export async function create(input: CreateConfigurationInput): Promise<void> {
 		name: input.name || "Untitled",
 		createdBy: input.createdBy,
 		sandboxProvider: input.sandboxProvider,
+		coderTemplateId: input.coderTemplateId,
+		coderTemplateParameters: input.coderTemplateParameters,
 	});
 }
 
@@ -350,6 +354,9 @@ export async function update(
 	if (input.routingDescription !== undefined) updates.routingDescription = input.routingDescription;
 	if (input.snapshotId !== undefined) updates.snapshotId = input.snapshotId;
 	if (input.status !== undefined) updates.status = input.status;
+	if (input.coderTemplateId !== undefined) updates.coderTemplateId = input.coderTemplateId;
+	if (input.coderTemplateParameters !== undefined)
+		updates.coderTemplateParameters = input.coderTemplateParameters;
 
 	const [result] = await db
 		.update(configurations)
@@ -379,11 +386,13 @@ export async function findByIdForSession(id: string): Promise<ConfigurationForSe
 			id: true,
 			snapshotId: true,
 			sandboxProvider: true,
+			coderTemplateId: true,
+			coderTemplateParameters: true,
 			status: true,
 		},
 	});
 
-	return result ?? null;
+	return (result as ConfigurationForSessionRow | undefined) ?? null;
 }
 
 /**

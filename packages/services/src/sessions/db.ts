@@ -386,6 +386,30 @@ export async function create(input: CreateSessionInput): Promise<SessionRow> {
 	return result;
 }
 
+export async function findActiveSetupSessionByRepoId(
+	organizationId: string,
+	repoId: string,
+): Promise<Pick<SessionRow, "id" | "sandboxId" | "openCodeTunnelUrl" | "previewTunnelUrl"> | null> {
+	const db = getDb();
+	const result = await db.query.sessions.findFirst({
+		where: and(
+			eq(sessions.organizationId, organizationId),
+			eq(sessions.repoId, repoId),
+			eq(sessions.kind, "setup"),
+			sql`${sessions.runtimeStatus} NOT IN ('completed', 'failed', 'cancelled')`,
+		),
+		columns: {
+			id: true,
+			sandboxId: true,
+			openCodeTunnelUrl: true,
+			previewTunnelUrl: true,
+		},
+		orderBy: [desc(sessions.startedAt)],
+	});
+
+	return result ?? null;
+}
+
 /**
  * Atomic concurrent admission guard for session creation.
  *
@@ -2002,7 +2026,7 @@ export interface CreateTaskSessionInput {
 	visibility?: "private" | "shared" | "org";
 	initialPrompt?: string | null;
 	title?: string | null;
-	sandboxProvider?: "modal" | "e2b";
+	sandboxProvider?: "modal" | "e2b" | "coder";
 }
 
 export async function createTaskSession(input: CreateTaskSessionInput): Promise<SessionRow> {

@@ -4,7 +4,7 @@
 
 ### In Scope
 - `SandboxProvider` interface contract and capability flags
-- Provider factory selection (`modal` vs `e2b`)
+- Provider factory selection and provider type persistence
 - Modal provider implementation (`ModalLibmodalProvider`)
 - E2B provider implementation (`E2BProvider`)
 - Sandbox boot orchestration (workspace clone/restore, tool injection, OpenCode startup)
@@ -26,7 +26,7 @@
 
 ### Mental Models
 
-A sandbox provider is a compute orchestration adapter, not a session orchestrator. Session code decides *when* to create, resume, pause, or terminate; provider code decides *how* that action is executed against Modal or E2B.
+A sandbox provider is a compute orchestration adapter, not a session orchestrator. Session code decides *when* to create, resume, pause, or terminate; provider code decides *how* that action is executed against Modal, E2B, or Coder.
 
 The core abstraction is capability-based, not provider-uniform:
 - Filesystem snapshot exists on both providers.
@@ -69,6 +69,8 @@ State is intentionally split:
 
 ### Provider Factory
 `getSandboxProvider(type?)` resolves provider implementation from explicit type or `DEFAULT_SANDBOX_PROVIDER` and returns a fresh provider instance (`packages/shared/src/providers/index.ts`).
+
+Current shared-package support is `e2b` plus the initial `coder` adapter slice. Detailed Coder acquisition and bridge behavior remains owned by `coder-provider.md`.
 
 Session runtime persists and reuses provider type via `sessions.sandbox_provider` to keep resume/snapshot behavior provider-consistent (`apps/gateway/src/hub/session-runtime.ts`, `apps/gateway/src/hub/session-hub.ts`).
 

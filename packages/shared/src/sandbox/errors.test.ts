@@ -191,6 +191,24 @@ describe("SandboxProviderError", () => {
 				expect(error.isRetryable).toBe(true);
 			}
 		});
+
+		it("should stringify structured API errors", () => {
+			const original = Object.assign(new Error("[object Object]"), {
+				status: 400,
+				data: {
+					message: { error: "Template parameter validation failed" },
+					detail: "Invalid Coder template parameters",
+					validations: [{ field: "image_variant", detail: "must be one of: js, ts" }],
+				},
+			});
+
+			const error = SandboxProviderError.fromError(original, "coder", "createSandbox");
+
+			expect(error.message).toContain('{"error":"Template parameter validation failed"}');
+			expect(error.message).toContain("Invalid Coder template parameters");
+			expect(error.message).toContain("image_variant: must be one of: js, ts");
+			expect(error.statusCode).toBe(400);
+		});
 	});
 });
 

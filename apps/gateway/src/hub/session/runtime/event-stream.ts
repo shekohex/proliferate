@@ -8,6 +8,7 @@ export async function connectCodingEventStream(input: {
 	codingHarness: CodingHarnessAdapter;
 	runtimeBaseUrl: string;
 	authToken: string;
+	runtimeHeaders?: Record<string, string>;
 	afterSeq?: number;
 	bindingId: string;
 	env: GatewayEnv;
@@ -21,6 +22,7 @@ export async function connectCodingEventStream(input: {
 	const handle = await input.codingHarness.streamEvents({
 		baseUrl: input.runtimeBaseUrl,
 		authToken: input.authToken,
+		runtimeHeaders: input.runtimeHeaders,
 		afterSeq: input.afterSeq,
 		bindingId: input.bindingId,
 		env: input.env,

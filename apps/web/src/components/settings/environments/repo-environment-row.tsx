@@ -1,5 +1,6 @@
 "use client";
 
+import { CoderTemplateSettingsSection } from "@/components/settings/environments/coder-template-settings-section";
 import { SnapshotRefreshSection } from "@/components/settings/environments/snapshot-refresh-section";
 import { BaselineSection } from "@/components/settings/repositories/baseline-section";
 import { DangerSection } from "@/components/settings/repositories/danger-section";
@@ -79,6 +80,9 @@ export function RepoEnvironmentRow({ repo, baseline }: RepoEnvironmentRowProps) 
 
 			{expanded && (
 				<div className="border-t border-border/50 px-4 py-4 pl-11 space-y-6">
+					{repo.configurationId && (
+						<CoderTemplateSettingsSection configurationId={repo.configurationId} />
+					)}
 					<BaselineSection repoId={repo.id} />
 					{repo.configurationId && repo.configurationStatus === "ready" && (
 						<SnapshotRefreshSection configurationId={repo.configurationId} />

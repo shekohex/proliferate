@@ -1,20 +1,35 @@
 /**
  * Sandbox Provider Factory
- *
- * E2B is the sole sandbox provider.
  */
 
+import { env } from "@proliferate/environment/server";
+import { CoderProvider } from "./coder";
 import { E2BProvider } from "./e2b";
 import type { SandboxProvider, SandboxProviderType } from "./types";
 
+function isSandboxProviderType(value: string | undefined): value is SandboxProviderType {
+	return value === "e2b" || value === "coder";
+}
+
 /**
  * Get a sandbox provider instance.
- * Always returns E2B — the type parameter exists for DB column compatibility.
  */
-export function getSandboxProvider(_type?: SandboxProviderType): SandboxProvider {
+export function getSandboxProvider(type?: SandboxProviderType): SandboxProvider {
+	const providerType =
+		type ??
+		(isSandboxProviderType(env.DEFAULT_SANDBOX_PROVIDER)
+			? env.DEFAULT_SANDBOX_PROVIDER
+			: undefined);
+
+	if (providerType === "coder") {
+		return new CoderProvider();
+	}
+
 	return new E2BProvider();
 }
 
+export { CoderProvider } from "./coder";
+export { getCoderProviderDefaults, getCoderTemplate, listCoderTemplates } from "./coder";
 export { E2BProvider } from "./e2b";
 
 export type { SandboxProvider, SandboxProviderType } from "./types";

@@ -142,7 +142,7 @@ Once attached, follow-up prompts should reuse that binding unless the user expli
 
 ## 6. Subsystem Deep Dives
 
-### 6.1 Provider Settings and Catalog Sync — `Planned`
+### 6.1 Provider Settings and Catalog Sync — `Partial`
 
 **Intent**
 The settings surface should let an org configure one or more Coder deployments and see the templates exposed by each deployment.
@@ -157,12 +157,20 @@ The settings surface should let an org configure one or more Coder deployments a
 - If the SDK lacks the exact template-list shape, a thin wrapper around `packages/codersdk` should provide it.
 - Admins should be able to inspect template parameters before creating or binding workspaces.
 
+**Current slice**
+- `/settings/environments` now renders a Coder settings section when `DEFAULT_SANDBOX_PROVIDER=coder`.
+- Coder connection details remain env-backed (`CODER_URL`, `CODER_SESSION_TOKEN`), but template defaults now persist as org-scoped settings on `organization.coder_settings`.
+- The settings UI can save the default template, optional preset ID, and default parameter values.
+- Template parameter metadata is fetched lazily from Coder rich-parameter metadata and rendered dynamically in the UI.
+
 **References**
 - `packages/codersdk/src/api.ts`
 - `packages/codersdk/src/typesGenerated.ts`
 - `packages/codersdk/src/utils/OneWayWebSocket.ts`
+- `apps/web/src/server/routers/coder-provider.ts`
+- `apps/web/src/components/settings/environments/coder-settings-section.tsx`
 
-### 6.2 Template Default Resolution — `Planned`
+### 6.2 Template Default Resolution — `Partial`
 
 **Intent**
 Resolve a workspace creation payload by layering the Coder template definition with Proliferate-owned defaults.
@@ -178,10 +186,19 @@ Resolve a workspace creation payload by layering the Coder template definition w
 - Changing a default affects future acquisitions only.
 - Default resolution must be deterministic for the same template version and binding state.
 
+**Current slice**
+- The setup/onboarding flow now lets the user choose a Coder template for a repo-backed environment before the configuration is created.
+- Parameter inputs are derived from the selected template's rich parameters, including type, form kind, icons, options, and validation metadata.
+- Org-level default values come from persisted Coder settings, not env.
+- The selected template ID and parameter values are persisted on the configuration and passed through session runtime into `CreateSandboxOpts` for Coder-backed sessions.
+- Existing configurations can edit the Coder template and parameter overrides from `/settings/environments`.
+
 **References**
 - `packages/codersdk/src/typesGenerated.ts`
 - `packages/services/src/configurations/service.ts`
 - `packages/services/src/repos/service.ts`
+- `apps/web/src/components/workspace/onboard/coder-template-editor.tsx`
+- `apps/gateway/src/hub/session/runtime/session-context-store.ts`
 
 ### 6.3 Repo-to-Workspace Binding — `Planned`
 
@@ -206,10 +223,20 @@ Let a GitHub repo resolve to a prewarmed or reusable Coder workspace instead of 
 - `apps/gateway/src/hub/session-runtime.ts`
 - `apps/gateway/src/hub/session-hub.ts`
 
-### 6.4 Workspace Acquisition and Reuse — `Planned`
+### 6.4 Workspace Acquisition and Reuse — `Partial`
 
 **Intent**
 Prompt routing should be able to attach a session to an already running Coder workspace when repo context is present.
+
+**Current slice**
+- `SandboxProviderType` and the shared provider factory now accept `coder`.
+- `packages/shared/src/providers/coder.ts` provides an env-backed `CoderProvider` that uses `packages/codersdk` for auth, template validation, workspace lookup, workspace start, and workspace creation.
+- `ensureSandbox()` prefers a stored workspace ID, then falls back to a deterministic session-derived workspace name before creating a new workspace.
+- `createSandbox()` validates `CODER_TEMPLATE_ID` and creates a workspace for the authenticated Coder user.
+- Initial create/start parameters can be supplied through `CODER_TEMPLATE_VERSION_PRESET_ID` and `CODER_TEMPLATE_PARAMETERS_JSON`, which map to Coder's `template_version_preset_id` and `rich_parameter_values` fields.
+- `checkSandboxes()` reports live workspaces from Coder build status for existing metering and liveness checks.
+- Resulting `sandboxId` is the Coder workspace ID.
+- `tunnelUrl` and `previewUrl` are intentionally empty in this slice because ACP/bootstrap bridge wiring is not implemented yet.
 
 **Invariants**
 - Prompt-time acquisition should prefer reuse over provisioning.
@@ -221,10 +248,12 @@ Prompt routing should be able to attach a session to an already running Coder wo
 - `ensureSandbox()`-style recovery should resolve by stored workspace identity before creating a new one.
 - Follow-up prompts should not re-run provisioning if the session is already attached to a healthy workspace.
 - Explicit user requests for a different workspace should override the existing binding.
+- The initial adapter may use deployment env vars (`CODER_URL`, `CODER_SESSION_TOKEN`, `CODER_TEMPLATE_ID`) before the org-scoped settings surface exists.
 
 **References**
 - `packages/shared/src/providers/types.ts`
 - `packages/shared/src/providers/index.ts`
+- `packages/shared/src/providers/coder.ts`
 - `apps/gateway/src/hub/session-hub.ts`
 - `apps/gateway/src/hub/session-runtime.ts`
 
@@ -314,6 +343,7 @@ Use Coder workspace persistence as the recovery boundary instead of a sandbox sn
 
 ## 9. Known Limitations & Tech Debt
 
+- [ ] **Connection profile still env-backed** — host and auth remain process env today; only template defaults moved into persisted org settings.
 - [ ] **No native snapshot parity** — Coder stop/start persistence is not the same as Modal/E2B snapshot restore.
 - [ ] **Bridge dependency is mandatory for full parity** — `packages/codersdk` does not directly cover file/command IO.
 - [ ] **Template schema drift risk** — template defaults may become stale if catalog sync lags control-plane changes.

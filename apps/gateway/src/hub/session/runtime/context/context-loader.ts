@@ -19,6 +19,9 @@ function buildSessionConfig(context: SessionContext): SessionConfig {
 		secretFileWrites: context.secretFileWrites,
 		snapshotHasDeps: context.snapshotHasDeps,
 		serviceCommands: context.serviceCommands,
+		coderTemplateId: context.coderTemplateId,
+		coderTemplateVersionPresetId: context.coderTemplateVersionPresetId,
+		coderTemplateParameters: context.coderTemplateParameters,
 		initialPrompt: context.initialPrompt,
 	};
 }

@@ -8,6 +8,7 @@ import { randomUUID } from "crypto";
 import { env } from "@proliferate/environment/server";
 import { createConfigurationSnapshotBuildQueue } from "@proliferate/queue";
 import type { ConfigurationServiceCommand, SandboxProviderType } from "@proliferate/shared";
+import type { CoderTemplateParameterValue } from "@proliferate/shared/contracts/coder-provider";
 import type { Configuration } from "@proliferate/shared/contracts/configurations";
 import { getSandboxProvider } from "@proliferate/shared/providers";
 import {
@@ -77,6 +78,8 @@ export interface CreateConfigurationInput {
 	userId: string;
 	repoIds: string[];
 	name?: string;
+	coderTemplateId?: string;
+	coderTemplateParameters?: CoderTemplateParameterValue[];
 }
 
 export interface CreateConfigurationResult {
@@ -88,6 +91,8 @@ export interface UpdateConfigurationInput {
 	name?: string;
 	notes?: string;
 	routingDescription?: string | null;
+	coderTemplateId?: string | null;
+	coderTemplateParameters?: CoderTemplateParameterValue[];
 }
 
 export interface EffectiveServiceCommandsResult {
@@ -135,6 +140,8 @@ export async function createConfiguration(
 	input: CreateConfigurationInput,
 ): Promise<CreateConfigurationResult> {
 	const { organizationId, userId, repoIds, name } = input;
+	const coderTemplateId = input.coderTemplateId;
+	const coderTemplateParameters = input.coderTemplateParameters;
 
 	if (!repoIds || repoIds.length === 0) {
 		throw new ConfigurationValidationError("At least one repo is required");
@@ -164,6 +171,8 @@ export async function createConfiguration(
 		name: defaultName,
 		createdBy: userId,
 		sandboxProvider: env.DEFAULT_SANDBOX_PROVIDER,
+		coderTemplateId,
+		coderTemplateParameters,
 	});
 
 	// Create configuration_repos entries with derived workspace paths
@@ -262,7 +271,9 @@ export async function updateConfiguration(
 	if (
 		input.name === undefined &&
 		input.notes === undefined &&
-		input.routingDescription === undefined
+		input.routingDescription === undefined &&
+		input.coderTemplateId === undefined &&
+		input.coderTemplateParameters === undefined
 	) {
 		throw new ConfigurationValidationError("No fields to update");
 	}
@@ -327,6 +338,8 @@ export async function createConfigurationForOrg(input: {
 	repoIds?: string[];
 	legacyRepos?: Array<{ repoId: string }>;
 	name?: string;
+	coderTemplateId?: string;
+	coderTemplateParameters?: CoderTemplateParameterValue[];
 }): Promise<CreateConfigurationResult> {
 	// Normalize: support both new repoIds[] and legacy repos[] format
 	const resolvedRepoIds = input.repoIds || input.legacyRepos?.map((r) => r.repoId);
@@ -339,6 +352,8 @@ export async function createConfigurationForOrg(input: {
 		userId: input.userId,
 		repoIds: resolvedRepoIds,
 		name: input.name,
+		coderTemplateId: input.coderTemplateId,
+		coderTemplateParameters: input.coderTemplateParameters,
 	});
 }
 

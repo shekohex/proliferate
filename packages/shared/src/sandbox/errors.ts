@@ -5,10 +5,14 @@
  * These prevent provider-specific error leakage and enable proper retry logic.
  */
 
-export type SandboxProviderType = "modal" | "e2b";
+export type SandboxProviderType = "modal" | "e2b" | "coder";
 
 export type SandboxOperation =
 	| "createSandbox"
+	| "ensureSandbox"
+	| "checkSandboxes"
+	| "listTemplates"
+	| "getTemplate"
 	| "snapshot"
 	| "terminate"
 	| "pause"
@@ -56,6 +60,98 @@ export function redactSecrets(text: string): string {
 		redacted = redacted.replace(pattern, "[REDACTED]");
 	}
 	return redacted;
+}
+
+function stringifyErrorValue(value: unknown): string {
+	if (typeof value === "string") {
+		return value;
+	}
+
+	if (value instanceof Error) {
+		return value.message;
+	}
+
+	if (value === null || value === undefined) {
+		return "";
+	}
+
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
+	}
+}
+
+function extractStructuredErrorMessage(error: unknown): string | undefined {
+	if (!error || typeof error !== "object") {
+		return undefined;
+	}
+
+	const record = error as Record<string, unknown>;
+	const segments: string[] = [];
+
+	const pushValue = (value: unknown) => {
+		const text = stringifyErrorValue(value).trim();
+		if (text && text !== "[object Object]" && !segments.includes(text)) {
+			segments.push(text);
+		}
+	};
+
+	if ("message" in record) {
+		pushValue(record.message);
+	}
+
+	if ("detail" in record) {
+		pushValue(record.detail);
+	}
+
+	if (Array.isArray(record.validations) && record.validations.length > 0) {
+		const validationText = record.validations
+			.map((validation) => {
+				if (!validation || typeof validation !== "object") {
+					return stringifyErrorValue(validation);
+				}
+
+				const field = "field" in validation ? stringifyErrorValue(validation.field) : "field";
+				const detail = "detail" in validation ? stringifyErrorValue(validation.detail) : "invalid";
+				return `${field}: ${detail}`;
+			})
+			.join("; ");
+
+		pushValue(validationText);
+	}
+
+	if ("data" in record) {
+		const nested = extractStructuredErrorMessage(record.data);
+		if (nested) {
+			pushValue(nested);
+		}
+	}
+
+	return segments.length > 0 ? segments.join(" - ") : undefined;
+}
+
+function extractStatusCode(error: unknown): number | undefined {
+	if (!error || typeof error !== "object") {
+		return undefined;
+	}
+
+	const record = error as Record<string, unknown>;
+	if (typeof record.status === "number") {
+		return record.status;
+	}
+
+	if (
+		"response" in record &&
+		record.response &&
+		typeof record.response === "object" &&
+		"status" in record.response &&
+		typeof (record.response as { status?: unknown }).status === "number"
+	) {
+		return (record.response as { status: number }).status;
+	}
+
+	return undefined;
 }
 
 /**
@@ -160,11 +256,18 @@ export class SandboxProviderError extends Error {
 			return error;
 		}
 
-		const message = error instanceof Error ? error.message : String(error);
+		const message =
+			extractStructuredErrorMessage(error) ||
+			(error instanceof Error ? error.message : stringifyErrorValue(error));
+		const statusCode = extractStatusCode(error);
 		const cause = error instanceof Error ? error : undefined;
 
 		// Network errors are typically retryable
 		const isRetryable =
+			statusCode === 429 ||
+			statusCode === 502 ||
+			statusCode === 503 ||
+			statusCode === 504 ||
 			message.includes("ECONNREFUSED") ||
 			message.includes("ETIMEDOUT") ||
 			message.includes("ENOTFOUND") ||
@@ -176,6 +279,7 @@ export class SandboxProviderError extends Error {
 			provider,
 			operation,
 			message,
+			statusCode,
 			isRetryable,
 			raw: error,
 			cause,

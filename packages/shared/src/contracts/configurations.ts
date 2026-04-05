@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CoderTemplateParameterValueSchema } from "./coder-provider";
 
 // ============================================
 // Schemas
@@ -31,6 +32,8 @@ export const ConfigurationSchema = z.object({
 	createdAt: z.string().nullable(),
 	createdBy: z.string().nullable(),
 	sandboxProvider: z.string().nullable(),
+	coderTemplateId: z.string().nullable().optional(),
+	coderTemplateParameters: z.array(CoderTemplateParameterValueSchema).optional(),
 	refreshEnabled: z.boolean().optional(),
 	refreshIntervalMinutes: z.number().optional(),
 	lastRefreshedAt: z.string().nullable().optional(),
@@ -52,12 +55,16 @@ export const CreateConfigurationInputSchema = z.object({
 		)
 		.optional(),
 	name: z.string().optional(),
+	coderTemplateId: z.string().optional(),
+	coderTemplateParameters: z.array(CoderTemplateParameterValueSchema).optional(),
 });
 
 export const UpdateConfigurationInputSchema = z.object({
 	name: z.string().optional(),
 	notes: z.string().optional(),
 	routingDescription: z.string().nullable().optional(),
+	coderTemplateId: z.string().nullable().optional(),
+	coderTemplateParameters: z.array(CoderTemplateParameterValueSchema).optional(),
 });
 
 export const UpdateRefreshSettingsInputSchema = z.object({
