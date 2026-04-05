@@ -161,8 +161,8 @@ services:
       - MODAL_APP_SUFFIX=${MODAL_APP_SUFFIX:-}
       - MODAL_TOKEN_ID=${MODAL_TOKEN_ID:-}
       - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET:-}
-      - LLM_PROXY_URL=${LLM_PROXY_URL:-http://llm-proxy:4000}
-      - LLM_PROXY_MASTER_KEY=${LLM_PROXY_MASTER_KEY:-sk-local-master-key}
+      - LLM_PROXY_URL=${LLM_PROXY_URL:-}
+      - LLM_PROXY_MASTER_KEY=${LLM_PROXY_MASTER_KEY:-}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - SERVICE_TO_SERVICE_AUTH_TOKEN=${SERVICE_TO_SERVICE_AUTH_TOKEN}
       - GATEWAY_JWT_SECRET=${GATEWAY_JWT_SECRET}
@@ -274,27 +274,28 @@ services:
 
   # ==========================================================================
   # LLM Proxy (LiteLLM for secure API key management)
+  # Disabled locally. Use LLM_PROXY_URL/LLM_PROXY_ADMIN_URL from .env.local.
   # ==========================================================================
-  llm-proxy:
-    image: ghcr.io/proliferate-ai/llm-proxy:latest
-    platform: linux/amd64
-    ports:
-      - "4000:4000"
-    environment:
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/proliferate?schema=litellm&sslmode=disable
-      - LITELLM_MASTER_KEY=${LLM_PROXY_MASTER_KEY:-sk-local-master-key}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - LITELLM_MIGRATION_DIR=/tmp/litellm-migrations
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; r=urllib.request.urlopen('http://localhost:4000/health/liveliness'); sys.exit(0 if r.status==200 else 1)\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    restart: unless-stopped
+  # llm-proxy:
+  #   image: ghcr.io/proliferate-ai/llm-proxy:latest
+  #   platform: linux/amd64
+  #   ports:
+  #     - "4000:4000"
+  #   environment:
+  #     - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/proliferate?schema=litellm&sslmode=disable
+  #     - LITELLM_MASTER_KEY=${LLM_PROXY_MASTER_KEY:-}
+  #     - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+  #     - LITELLM_MIGRATION_DIR=/tmp/litellm-migrations
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "python -c \"import urllib.request,sys; r=urllib.request.urlopen('http://localhost:4000/health/liveliness'); sys.exit(0 if r.status==200 else 1)\""]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 120s
+  #   restart: unless-stopped
 
   # ==========================================================================
   # MinIO (optional S3-compatible storage for verification media)

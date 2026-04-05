@@ -6,6 +6,8 @@
 .DEFAULT_GOAL := help
 
 NGROK_CONFIG ?= $(shell if [ -f ngrok.yml ]; then echo ngrok.yml; else echo ngrok.yml.example; fi)
+COMPOSE_ENV_FILE ?= $(shell if [ -f .env.local ]; then echo .env.local; elif [ -f .env ]; then echo .env; fi)
+DOCKER_COMPOSE := docker compose$(if $(COMPOSE_ENV_FILE), --env-file $(COMPOSE_ENV_FILE),)
 
 # ===========================================
 # Quick Start
@@ -15,15 +17,15 @@ help:
 	@echo "Proliferate Development Commands"
 	@echo ""
 	@echo "Quick Start (2 terminals):"
-	@echo "  make services    - Start Postgres, Redis, LLM Proxy"
+	@echo "  make services    - Start Postgres and Redis"
 	@echo "  make ngrok       - Start ALL ngrok tunnels"
 	@echo "  make web         - Start Next.js app"
 	@echo ""
 	@echo "Services:"
-	@echo "  make services    - Start all docker services"
-	@echo "  make services-rebuild - Rebuild + start postgres/redis/llm-proxy"
-	@echo "  make llm-proxy   - Start just LLM proxy"
-	@echo "  make llm-proxy-rebuild - Rebuild + start LLM proxy"
+	@echo "  make services    - Start local docker services"
+	@echo "  make services-rebuild - Rebuild + start postgres/redis"
+	@echo "  make llm-proxy   - Prints remote proxy reminder"
+	@echo "  make llm-proxy-rebuild - Prints remote proxy reminder"
 	@echo "  make docker-nuke - Stop + remove ALL containers and volumes"
 	@echo "  make stop        - Stop docker services"
 	@echo "  make logs        - Tail all logs"
@@ -90,32 +92,30 @@ help:
 # ===========================================
 
 services:
-	docker compose up -d postgres redis llm-proxy
+	$(DOCKER_COMPOSE) up -d postgres redis
 	@echo ""
 	@echo "✅ Services started:"
 	@echo "   PostgreSQL: localhost:5432"
 	@echo "   Redis:      localhost:6379"
-	@echo "   LLM Proxy:  localhost:4000"
+	@echo "   LLM Proxy:  remote via LLM_PROXY_URL"
 	@echo ""
 	@echo "Next: Run 'make ngrok' in another terminal"
 
 services-rebuild:
-	docker compose up -d --build postgres redis llm-proxy
+	$(DOCKER_COMPOSE) up -d --build postgres redis
 	@echo ""
 	@echo "✅ Services rebuilt and started:"
 	@echo "   PostgreSQL: localhost:5432"
 	@echo "   Redis:      localhost:6379"
-	@echo "   LLM Proxy:  localhost:4000"
+	@echo "   LLM Proxy:  remote via LLM_PROXY_URL"
 	@echo ""
 	@echo "Next: Run 'make ngrok' in another terminal"
 
 llm-proxy:
-	docker compose up -d llm-proxy
-	@echo "✅ LLM Proxy: localhost:4000"
+	@echo "Local llm-proxy is disabled. Use LLM_PROXY_URL from .env.local."
 
 llm-proxy-rebuild:
-	docker compose up -d --build llm-proxy
-	@echo "✅ LLM Proxy rebuilt: localhost:4000"
+	@echo "Local llm-proxy is disabled. Use LLM_PROXY_URL from .env.local."
 
 ngrok:
 	@echo "Starting all ngrok tunnels (llm-proxy, web, gateway)..."
@@ -138,14 +138,14 @@ docker-nuke:
 	@echo "✅ All containers and volumes removed"
 
 stop:
-	docker compose down
+	$(DOCKER_COMPOSE) down
 	@echo "✅ Services stopped"
 
 logs:
-	docker compose logs -f
+	$(DOCKER_COMPOSE) logs -f
 
 logs-llm:
-	docker compose logs -f llm-proxy
+	$(DOCKER_COMPOSE) logs -f llm-proxy
 
 # ===========================================
 # App Development
@@ -155,6 +155,7 @@ web:
 	pnpm dev:web
 
 gateway:
+	pnpm --filter @proliferate/gateway-clients build
 	pnpm dev:gateway
 
 worker:
