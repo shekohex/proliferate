@@ -79,8 +79,19 @@ install_sandbox_mcp() {
   fi
 
   local package_path="$LOCAL_SHARE/$ARG_SANDBOX_MCP_ASSET_NAME"
+  local install_root="$HOME/.local/lib/node_modules/proliferate-sandbox-mcp"
   download_asset "$ARG_SANDBOX_MCP_ASSET_NAME" "$package_path"
-  NPM_CONFIG_PREFIX="$HOME/.local" npm install -g "$package_path"
+  rm -rf "$install_root"
+  mkdir -p "$install_root"
+  tar -xzf "$package_path" -C "$install_root" --strip-components=1
+  (
+    cd "$install_root"
+    node -e 'const fs=require("fs"); const pkg=JSON.parse(fs.readFileSync("package.json","utf8")); delete pkg.devDependencies; delete pkg.scripts; fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));'
+    npm install --no-audit --no-fund --omit=dev express@^4.18.2 node-pty@^1.1.0 ws@^8.16.0
+  )
+  ln -sf "$install_root/dist/bundle.cjs" "$LOCAL_BIN/sandbox-mcp"
+  ln -sf "$install_root/dist/proliferate.cjs" "$LOCAL_BIN/proliferate"
+  chmod +x "$LOCAL_BIN/sandbox-mcp" "$LOCAL_BIN/proliferate"
 }
 
 install_sandbox_agent() {
@@ -171,7 +182,7 @@ install_proliferate_home_deps() {
   fi
   (
     cd "$PROLIFERATE_HOME"
-    npm install better-sqlite3@11
+    npm install --no-audit --no-fund better-sqlite3@11
   )
 }
 
@@ -186,7 +197,7 @@ install_opencode_tools() {
 
   (
     cd "$OPENCODE_TOOLS_DIR"
-    npm install @aws-sdk/client-s3 @opencode-ai/plugin
+    npm install --no-audit --no-fund @aws-sdk/client-s3 @opencode-ai/plugin
   )
 }
 
