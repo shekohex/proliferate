@@ -111,7 +111,7 @@ variable "caddy_version" {
 variable "sandbox_agent_install_url" {
   type        = string
   description = "Install script URL for sandbox-agent."
-  default     = "https://releases.rivet.dev/sandbox-agent/0.2.28/install.sh"
+  default     = "https://releases.rivet.dev/sandbox-agent/0.4.x/install.sh"
 }
 
 variable "install_opencode" {
