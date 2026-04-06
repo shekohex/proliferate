@@ -13,6 +13,14 @@ temp_hero/
 # Inspiration
 inspiration/
 scripts/
+!scripts/
+scripts/*
+!scripts/release/
+scripts/release/*
+!scripts/release/package-coder-module-assets.sh
+!coder/modules/proliferate/scripts/
+!coder/modules/proliferate/scripts/install.sh
+!coder/modules/proliferate/scripts/start.sh
 
 # Build outputs
 dist/
