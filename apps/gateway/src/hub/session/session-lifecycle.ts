@@ -144,6 +144,11 @@ export async function recordLifecycleEvent(
 			eventType,
 		});
 	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		if (message.includes("session_events_session_id_fkey")) {
+			logger.debug({ sessionId, eventType }, "Skipping lifecycle event for missing session row");
+			return;
+		}
 		logger.warn({ err, sessionId, eventType }, "Failed to record session event");
 	}
 }

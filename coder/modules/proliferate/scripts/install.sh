@@ -3,9 +3,9 @@ set -euo pipefail
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:$PATH"
-export MISE_DATA_DIR="${MISE_DATA_DIR:-$HOME/.local/share/mise}"
-export MISE_CONFIG_DIR="${MISE_CONFIG_DIR:-$HOME/.config/mise}"
-export MISE_GLOBAL_CONFIG_FILE="${MISE_GLOBAL_CONFIG_FILE:-$HOME/.config/mise/config.toml}"
+export MISE_DATA_DIR="$HOME/.local/share/mise"
+export MISE_CONFIG_DIR="$HOME/.config/mise"
+export MISE_GLOBAL_CONFIG_FILE="$HOME/.config/mise/config.toml"
 export PATH="$MISE_DATA_DIR/shims:$PATH"
 
 command_exists() {
@@ -97,7 +97,7 @@ install_sandbox_agent() {
     exit 1
   fi
 
-  curl -fsSL "$ARG_SANDBOX_AGENT_INSTALL_URL" | sh
+  BIN_DIR="$HOME/.local/bin" curl -fsSL "$ARG_SANDBOX_AGENT_INSTALL_URL" | sh
 }
 
 install_caddy() {
