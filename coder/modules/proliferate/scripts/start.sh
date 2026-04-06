@@ -3,8 +3,10 @@ set -euo pipefail
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
+PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+export PYTHONPATH="$HOME/.local/share/proliferate/python/lib/python${PYTHON_VERSION}/site-packages${PYTHONPATH:+:$PYTHONPATH}"
 
-ARG_WORKDIR=${ARG_WORKDIR:-"$HOME"}
+ARG_WORKDIR=${ARG_WORKDIR:-"$HOME/project"}
 ARG_WORKSPACE_DIR=${ARG_WORKSPACE_DIR:-"$ARG_WORKDIR"}
 ARG_SESSION_ID=${ARG_SESSION_ID:-}
 ARG_SESSION_TOKEN=$(echo -n "${ARG_SESSION_TOKEN:-}" | base64 -d 2>/dev/null || echo "")

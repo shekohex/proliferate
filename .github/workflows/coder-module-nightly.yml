@@ -34,6 +34,12 @@ jobs:
       - name: Package coder module release assets
         run: ./scripts/release/package-coder-module-assets.sh
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Smoke test packaged assets
+        run: ./scripts/release/smoke-test-coder-module-assets.sh
+
       - name: Update rolling nightly release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

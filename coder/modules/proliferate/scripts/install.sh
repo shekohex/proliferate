@@ -35,14 +35,19 @@ ARG_CADDY_VERSION=${ARG_CADDY_VERSION:-2}
 ARG_SANDBOX_AGENT_INSTALL_URL=${ARG_SANDBOX_AGENT_INSTALL_URL:-}
 ARG_INSTALL_OPENCODE=${ARG_INSTALL_OPENCODE:-true}
 ARG_OPENCODE_VERSION=${ARG_OPENCODE_VERSION:-latest}
+ARG_WORKDIR=${ARG_WORKDIR:-"$HOME/project"}
 ARG_AUTH_JSON=$(echo -n "${ARG_AUTH_JSON:-}" | base64 -d 2>/dev/null || echo "")
 ARG_OPENCODE_CONFIG=$(echo -n "${ARG_OPENCODE_CONFIG:-}" | base64 -d 2>/dev/null || echo "")
 ARG_PRE_INSTALL_SCRIPT=$(echo -n "${ARG_PRE_INSTALL_SCRIPT:-}" | base64 -d 2>/dev/null || echo "")
 ARG_POST_INSTALL_SCRIPT=$(echo -n "${ARG_POST_INSTALL_SCRIPT:-}" | base64 -d 2>/dev/null || echo "")
+PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
 
 LOCAL_BIN="$HOME/.local/bin"
 LOCAL_SHARE="$HOME/.local/share/proliferate"
-mkdir -p "$LOCAL_BIN" "$LOCAL_SHARE" "$HOME/.config/opencode" "$HOME/.local/share/opencode"
+PROLIFERATE_HOME="$HOME/.proliferate"
+OPENCODE_TOOLS_DIR="$HOME/.opencode-tools"
+PYTHON_SITE_PACKAGES="$LOCAL_SHARE/python/lib/python${PYTHON_VERSION}/site-packages"
+mkdir -p "$LOCAL_BIN" "$LOCAL_SHARE" "$PROLIFERATE_HOME/caddy" "$HOME/.config/opencode" "$HOME/.local/share/opencode" "$OPENCODE_TOOLS_DIR" "$ARG_WORKDIR"
 
 run_pre_install_script() {
   if [ -n "$ARG_PRE_INSTALL_SCRIPT" ]; then
@@ -61,11 +66,18 @@ download_asset() {
 
 install_sandbox_daemon() {
   local target_path="$LOCAL_BIN/sandbox-daemon"
+  if [ -x "$target_path" ]; then
+    return 0
+  fi
   download_asset "$ARG_SANDBOX_DAEMON_ASSET_NAME" "$target_path"
   chmod +x "$target_path"
 }
 
 install_sandbox_mcp() {
+  if command_exists sandbox-mcp; then
+    return 0
+  fi
+
   local package_path="$LOCAL_SHARE/$ARG_SANDBOX_MCP_ASSET_NAME"
   download_asset "$ARG_SANDBOX_MCP_ASSET_NAME" "$package_path"
   NPM_CONFIG_PREFIX="$HOME/.local" npm install -g "$package_path"
@@ -134,6 +146,55 @@ install_opencode() {
   fi
 }
 
+install_sqlite_vec() {
+	if command_exists python3 && PYTHONPATH="$PYTHON_SITE_PACKAGES${PYTHONPATH:+:$PYTHONPATH}" python3 -c "import sqlite_vec" >/dev/null 2>&1; then
+		return 0
+	fi
+
+	if ! command_exists uv; then
+		echo "uv is required to install sqlite-vec" >&2
+		exit 1
+	fi
+
+	mkdir -p "$PYTHON_SITE_PACKAGES"
+	uv pip install --python "$(command -v python3)" --target "$PYTHON_SITE_PACKAGES" sqlite-vec
+}
+
+install_proliferate_home_deps() {
+  if node -e "try { require('$PROLIFERATE_HOME/node_modules/better-sqlite3'); console.log('ok') } catch { console.log('missing') }" | grep -q ok; then
+    return 0
+  fi
+
+  mkdir -p "$PROLIFERATE_HOME"
+  if [ ! -f "$PROLIFERATE_HOME/package.json" ]; then
+    printf '%s' '{"name":"proliferate-runtime-home","private":true}' > "$PROLIFERATE_HOME/package.json"
+  fi
+  (
+    cd "$PROLIFERATE_HOME"
+    npm install better-sqlite3@11
+  )
+}
+
+install_opencode_tools() {
+  if [ -d "$OPENCODE_TOOLS_DIR/node_modules/@aws-sdk" ] && [ -d "$OPENCODE_TOOLS_DIR/node_modules/@opencode-ai" ]; then
+    return 0
+  fi
+
+  if [ ! -f "$OPENCODE_TOOLS_DIR/package.json" ]; then
+    printf '%s' '{"name":"opencode-tools","version":"1.0.0","private":true}' > "$OPENCODE_TOOLS_DIR/package.json"
+  fi
+
+  (
+    cd "$OPENCODE_TOOLS_DIR"
+    npm install @aws-sdk/client-s3 @opencode-ai/plugin
+  )
+}
+
+ensure_proliferate_dirs() {
+  mkdir -p "$PROLIFERATE_HOME/caddy"
+  touch "$PROLIFERATE_HOME/caddy/user.caddy"
+}
+
 write_opencode_files() {
   if [ -n "$ARG_AUTH_JSON" ]; then
     printf '%s' "$ARG_AUTH_JSON" > "$HOME/.local/share/opencode/auth.json"
@@ -159,5 +220,9 @@ install_sandbox_mcp
 install_sandbox_agent
 install_caddy
 install_opencode
+install_sqlite_vec
+install_proliferate_home_deps
+install_opencode_tools
+ensure_proliferate_dirs
 write_opencode_files
 run_post_install_script

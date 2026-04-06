@@ -13,7 +13,7 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/daemon.cjs --banner:js='#!/usr/bin/env node' --external:pino-pretty && chmod +x dist/daemon.cjs",
+		"bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/daemon.cjs --banner:js='#!/usr/bin/env node' && chmod +x dist/daemon.cjs",
 		"dev": "tsc --watch",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run"

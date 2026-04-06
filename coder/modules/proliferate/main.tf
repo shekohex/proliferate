@@ -39,6 +39,7 @@ variable "icon" {
 variable "workdir" {
   type        = string
   description = "The folder to run Proliferate runtime services in."
+  default     = "/home/coder/project"
 }
 
 variable "display_name" {
@@ -158,7 +159,7 @@ variable "sandbox_mcp_port" {
 variable "workspace_dir" {
   type        = string
   description = "Workspace root exposed to Proliferate services."
-  default     = "/home/coder/workspace"
+  default     = "/home/coder/project"
 }
 
 variable "session_id" {
