@@ -18,14 +18,14 @@ jobs:
       E2B_TEMPLATE_ALIAS: ${{ vars.E2B_TEMPLATE_ALIAS || 'proliferate-base' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v5
         with:
-          version: 8
+          version: 8.15.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: "pnpm"
