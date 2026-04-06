@@ -77,6 +77,9 @@ ARG_SANDBOX_AGENT_PORT=${ARG_SANDBOX_AGENT_PORT:-2468}
 ARG_SANDBOX_DAEMON_PORT=${ARG_SANDBOX_DAEMON_PORT:-8470}
 ARG_SANDBOX_MCP_PORT=${ARG_SANDBOX_MCP_PORT:-4000}
 
+SANDBOX_MCP_BIN="$HOME/.local/bin/sandbox-mcp"
+SANDBOX_DAEMON_BIN="$HOME/.local/bin/sandbox-daemon"
+
 CADDY_BIN="$(resolve_caddy_bin 2>/dev/null || true)"
 NODE_BIN="$(resolve_node_bin 2>/dev/null || true)"
 
@@ -121,12 +124,12 @@ if ! pgrep -f "opencode serve --port ${ARG_OPENCODE_PORT}" >/dev/null 2>&1; then
   nohup bash -lc "cd '$ARG_WORKDIR' && opencode serve --port ${ARG_OPENCODE_PORT} --hostname 0.0.0.0 --print-logs" >/tmp/opencode-serve.log 2>&1 &
 fi
 
-if ! pgrep -f "sandbox-mcp api" >/dev/null 2>&1; then
-  nohup env WORKSPACE_DIR="$ARG_WORKSPACE_DIR" SANDBOX_MCP_AUTH_TOKEN="$ARG_SESSION_TOKEN" sandbox-mcp api >/tmp/sandbox-mcp.log 2>&1 &
+if ! pgrep -f "$SANDBOX_MCP_BIN api" >/dev/null 2>&1; then
+	nohup env WORKSPACE_DIR="$ARG_WORKSPACE_DIR" SANDBOX_MCP_AUTH_TOKEN="$ARG_SESSION_TOKEN" "$SANDBOX_MCP_BIN" api >/tmp/sandbox-mcp.log 2>&1 &
 fi
 
-if ! pgrep -f "sandbox-daemon" >/dev/null 2>&1; then
-  nohup env NODE_ENV=production PROLIFERATE_WORKSPACE_ROOT="$ARG_WORKSPACE_DIR" PROLIFERATE_SESSION_TOKEN="$ARG_SESSION_TOKEN" sandbox-daemon >/tmp/sandbox-daemon.log 2>&1 &
+if ! pgrep -f "$SANDBOX_DAEMON_BIN" >/dev/null 2>&1; then
+	nohup env NODE_ENV=production PROLIFERATE_WORKSPACE_ROOT="$ARG_WORKSPACE_DIR" PROLIFERATE_SESSION_TOKEN="$ARG_SESSION_TOKEN" "$SANDBOX_DAEMON_BIN" >/tmp/sandbox-daemon.log 2>&1 &
 fi
 
 if ! pgrep -f "sandbox-agent server --host 0.0.0.0 --port ${ARG_SANDBOX_AGENT_PORT}" >/dev/null 2>&1; then
