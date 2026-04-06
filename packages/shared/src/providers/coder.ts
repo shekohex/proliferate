@@ -1,3 +1,4 @@
+import path from "path";
 import { Api } from "@coder/sdk";
 import { env } from "@proliferate/environment/server";
 import type {
@@ -7,6 +8,7 @@ import type {
 	CoderTemplateSummary,
 	CoderTemplateVariable,
 } from "../contracts/coder-provider";
+import { DEFAULT_CODER_PROLIFERATE_RELEASE_REF as defaultCoderProliferateReleaseRef } from "../contracts/coder-provider";
 import { getSharedLogger } from "../logger";
 import { SandboxProviderError } from "../sandbox";
 import type {
@@ -17,6 +19,8 @@ import type {
 	EnsureSandboxResult,
 	FileContent,
 	PauseResult,
+	RepoSpec,
+	SandboxPathSpec,
 	SandboxProvider,
 	SnapshotResult,
 } from "./types";
@@ -26,6 +30,8 @@ const log = getSharedLogger().child({ module: "coder" });
 const MAX_WORKSPACE_NAME_LENGTH = 32;
 const WORKSPACE_NAME_PREFIX = "prol";
 const LIVE_WORKSPACE_STATUSES = new Set(["running", "starting", "pending"]);
+const CODER_HOME_DIR = "/home/coder";
+const CODER_WORKSPACE_ROOT = `${CODER_HOME_DIR}/project`;
 
 type MinimalCoderUser = {
 	id: string;
@@ -163,6 +169,41 @@ function buildWorkspaceName(sessionId: string): string {
 	return `${WORKSPACE_NAME_PREFIX}-${suffix}`;
 }
 
+function inferRepoDirectoryName(repoUrl: string | undefined): string | null {
+	const normalizedRepoUrl = repoUrl?.trim().replace(/\/+$/, "");
+	if (!normalizedRepoUrl) {
+		return null;
+	}
+
+	const repoName = normalizedRepoUrl.match(/([^/:]+?)(?:\.git)?$/)?.[1];
+	if (!repoName) {
+		return null;
+	}
+
+	const sanitizedRepoName = repoName.replace(/[^A-Za-z0-9._-]/g, "-");
+	return sanitizedRepoName.length > 0 ? sanitizedRepoName : null;
+}
+
+function resolveCoderWorkspaceDir(repos: RepoSpec[] | undefined): string {
+	if (!repos || repos.length !== 1) {
+		return CODER_WORKSPACE_ROOT;
+	}
+
+	const [repo] = repos;
+	if (!repo) {
+		return CODER_WORKSPACE_ROOT;
+	}
+
+	if (repo.workspacePath && repo.workspacePath !== ".") {
+		return path.posix.join(CODER_WORKSPACE_ROOT, repo.workspacePath);
+	}
+
+	const inferredRepoDir = inferRepoDirectoryName(repo.repoUrl);
+	return inferredRepoDir
+		? path.posix.join(CODER_WORKSPACE_ROOT, inferredRepoDir)
+		: CODER_WORKSPACE_ROOT;
+}
+
 function isNotFoundError(error: unknown): boolean {
 	return typeof error === "object" && error !== null && "status" in error && error.status === 404;
 }
@@ -211,6 +252,36 @@ function getTemplateParameters(
 	parameters: CoderTemplateParameterValue[] | undefined,
 ): readonly WorkspaceBuildParameter[] | undefined {
 	return parameters && parameters.length > 0 ? parameters : undefined;
+}
+
+function mergeManagedTemplateParameters(
+	parameters: readonly WorkspaceBuildParameter[] | undefined,
+	opts: Pick<CreateSandboxOpts, "coderGatewayUrl" | "coderSessionToken" | "sessionId">,
+	variables: Array<{ name: string }>,
+): readonly WorkspaceBuildParameter[] | undefined {
+	const merged = new Map<string, string>(
+		(parameters ?? []).map((parameter) => [parameter.name, parameter.value]),
+	);
+	const availableNames = new Set(variables.map((variable) => variable.name));
+
+	const managedValues: Record<string, string> = {
+		enable_proliferate: "true",
+		proliferate_release_ref: defaultCoderProliferateReleaseRef,
+		proliferate_gateway_url: opts.coderGatewayUrl ?? "",
+		proliferate_session_id: opts.sessionId,
+		proliferate_session_token: opts.coderSessionToken ?? "",
+	};
+
+	for (const [name, value] of Object.entries(managedValues)) {
+		if (!availableNames.has(name)) {
+			continue;
+		}
+		merged.set(name, value);
+	}
+
+	return merged.size > 0
+		? [...merged.entries()].map(([name, value]) => ({ name, value }))
+		: undefined;
 }
 
 function mapTemplateSummary(template: {
@@ -379,8 +450,9 @@ async function waitForWorkspaceReady(
 }
 
 function toSandboxResult(workspace: MinimalCoderWorkspace): CreateSandboxResult {
-	const openCodeUrl = resolveWorkspaceAppUrl(workspace, ["opencode"], 4096);
-	const previewUrl = resolveWorkspaceAppUrl(workspace, ["preview"], 3000);
+	const proliferateUrl = resolveWorkspaceAppUrl(workspace, ["proliferate"], 20000);
+	const openCodeUrl = proliferateUrl || resolveWorkspaceAppUrl(workspace, ["opencode"], 4096);
+	const previewUrl = resolveWorkspaceAppUrl(workspace, ["preview"], 3000) || openCodeUrl;
 	return {
 		sandboxId: workspace.id,
 		tunnelUrl: openCodeUrl,
@@ -459,10 +531,16 @@ export class CoderProvider implements SandboxProvider {
 	readonly supportsPause = false;
 	readonly supportsAutoPause = false;
 
+	getSandboxPaths(repos: RepoSpec[] = []): SandboxPathSpec {
+		return {
+			homeDir: CODER_HOME_DIR,
+			workspaceDir: resolveCoderWorkspaceDir(repos),
+		};
+	}
+
 	async ensureSandbox(opts: CreateSandboxOpts): Promise<EnsureSandboxResult> {
 		try {
 			const client = createCoderClient("ensureSandbox");
-			const buildParameters = getTemplateParameters("ensureSandbox", opts.coderTemplateParameters);
 			const user = await client.getAuthenticatedUser();
 			const workspaceName = buildWorkspaceName(opts.sessionId);
 			const existingWorkspace = await getExistingWorkspace(
@@ -473,6 +551,13 @@ export class CoderProvider implements SandboxProvider {
 			);
 
 			if (existingWorkspace) {
+				const template = await client.getTemplate(existingWorkspace.template_id);
+				const variables = await client.getTemplateVersionRichParameters(template.active_version_id);
+				const buildParameters = mergeManagedTemplateParameters(
+					getTemplateParameters("ensureSandbox", opts.coderTemplateParameters),
+					opts,
+					variables,
+				);
 				const workspace = await waitForWorkspaceReady(client, existingWorkspace, buildParameters);
 				log.info(
 					{ sessionId: opts.sessionId, workspaceId: workspace.id },
@@ -504,9 +589,14 @@ export class CoderProvider implements SandboxProvider {
 			}
 
 			const client = createCoderClient("createSandbox");
-			const buildParameters = getTemplateParameters("createSandbox", opts.coderTemplateParameters);
 			const user = await client.getAuthenticatedUser();
-			await client.getTemplate(templateId);
+			const template = await client.getTemplate(templateId);
+			const variables = await client.getTemplateVersionRichParameters(template.active_version_id);
+			const buildParameters = mergeManagedTemplateParameters(
+				getTemplateParameters("createSandbox", opts.coderTemplateParameters),
+				opts,
+				variables,
+			);
 			const workspaceName = buildWorkspaceName(opts.sessionId);
 			const existingWorkspace = await getExistingWorkspace(client, user, undefined, workspaceName);
 

@@ -13,9 +13,39 @@ describe("getSandboxProvider", () => {
 });
 
 describe("CoderProvider", () => {
+	it("derives Coder sandbox paths from a single repo workspace", () => {
+		expect(
+			new CoderProvider().getSandboxPaths([
+				{ repoUrl: "https://github.com/acme/api.git", workspacePath: "." },
+			]),
+		).toEqual({
+			homeDir: "/home/coder",
+			workspaceDir: "/home/coder/project/api",
+		});
+	});
+
+	it("keeps the shared project root for multi-repo Coder workspaces", () => {
+		expect(
+			new CoderProvider().getSandboxPaths([
+				{ repoUrl: "https://github.com/acme/api.git", workspacePath: "api" },
+				{ repoUrl: "https://github.com/acme/web.git", workspacePath: "web" },
+			]),
+		).toEqual({
+			homeDir: "/home/coder",
+			workspaceDir: "/home/coder/project",
+		});
+	});
+
 	it("returns explicit not implemented errors for snapshot operations", async () => {
 		await expect(new CoderProvider().snapshot("session", "workspace")).rejects.toThrow(
 			"not implemented yet",
 		);
+	});
+
+	it("keeps E2B sandbox paths on the legacy layout", () => {
+		expect(new E2BProvider().getSandboxPaths()).toEqual({
+			homeDir: "/home/user",
+			workspaceDir: "/home/user/workspace",
+		});
 	});
 });

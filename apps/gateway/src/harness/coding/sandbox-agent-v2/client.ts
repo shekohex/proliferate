@@ -38,8 +38,8 @@ export async function createAcpSession(
 	baseUrl: string,
 	serverId: string,
 	agent: string,
+	cwd: string,
 	runtimeHeaders?: Record<string, string>,
-	cwd = "/home/user/workspace",
 ): Promise<string> {
 	const acpUrl = (path: string) => withAcpUrl(baseUrl, path);
 

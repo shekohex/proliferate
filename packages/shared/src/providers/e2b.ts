@@ -2,6 +2,7 @@ import { env } from "@proliferate/environment/server";
 import { Sandbox } from "e2b";
 import { getSharedLogger } from "../logger";
 import { SandboxProviderError, capOutput, shellEscape } from "../sandbox";
+import { SANDBOX_PATHS } from "../sandbox/config";
 import { setupAdditionalDependencies } from "./e2b/bootstrap/background";
 import { setupEssentialDependencies } from "./e2b/bootstrap/essential";
 import { findRunningSandbox, initializeSandbox } from "./e2b/create/initialize";
@@ -22,6 +23,8 @@ import type {
 	EnsureSandboxResult,
 	FileContent,
 	PauseResult,
+	RepoSpec,
+	SandboxPathSpec,
 	SandboxProvider,
 	SnapshotResult,
 } from "./types";
@@ -36,6 +39,13 @@ export class E2BProvider implements SandboxProvider {
 	readonly type = "e2b" as const;
 	readonly supportsPause = true;
 	readonly supportsAutoPause = true;
+
+	getSandboxPaths(_repos: RepoSpec[] = []): SandboxPathSpec {
+		return {
+			homeDir: SANDBOX_PATHS.home,
+			workspaceDir: `${SANDBOX_PATHS.home}/workspace`,
+		};
+	}
 
 	async createSandbox(opts: CreateSandboxOpts): Promise<CreateSandboxResult> {
 		const sessionLog = log.child({ sessionId: opts.sessionId });
@@ -53,7 +63,7 @@ export class E2BProvider implements SandboxProvider {
 		if (isSnapshot) {
 			await sandbox.commands
 				.run(CLEAR_STALE_PROCESSES_COMMAND, { timeoutMs: 10000 })
-				.catch(() => {});
+				.catch(() => undefined);
 		}
 
 		// 4. Blocking bootstrap: write tools/config/instructions, start OpenCode server

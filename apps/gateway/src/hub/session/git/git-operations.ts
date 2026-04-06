@@ -15,10 +15,9 @@ import type {
 	RepoSpec,
 	SandboxProvider,
 } from "@proliferate/shared";
-import { SANDBOX_PATHS, buildGitCredentialsMap, shellEscape } from "@proliferate/shared/sandbox";
+import { buildGitCredentialsMap, shellEscape } from "@proliferate/shared/sandbox";
 import type { GitIdentity } from "../runtime/git-identity";
 
-const WORKSPACE_DIR = `${SANDBOX_PATHS.home}/workspace`;
 const OPEN_PR_SUCCESS_CACHE_TTL_MS = 60_000;
 const OPEN_PR_ERROR_CACHE_TTL_MS = 10_000;
 
@@ -53,15 +52,18 @@ export class GitOperations {
 	constructor(
 		private provider: SandboxProvider,
 		private sandboxId: string,
+		private workspaceDir: string,
 		private gitIdentity: GitIdentity | null = null,
 		private repos: RepoSpec[] = [],
 		private logger?: Logger,
 	) {}
 
 	private resolveGitDir(workspacePath?: string): string {
-		if (!workspacePath || workspacePath === "." || workspacePath === "") return WORKSPACE_DIR;
-		const resolved = path.resolve(WORKSPACE_DIR, workspacePath);
-		if (!resolved.startsWith(`${WORKSPACE_DIR}/`) && resolved !== WORKSPACE_DIR) {
+		if (!workspacePath || workspacePath === "." || workspacePath === "") {
+			return this.workspaceDir;
+		}
+		const resolved = path.posix.resolve(this.workspaceDir, workspacePath);
+		if (!resolved.startsWith(`${this.workspaceDir}/`) && resolved !== this.workspaceDir) {
 			throw new Error("Invalid workspace path");
 		}
 		return resolved;

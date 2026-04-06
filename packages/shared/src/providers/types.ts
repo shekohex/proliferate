@@ -62,6 +62,11 @@ export interface RepoSpec {
 	serviceCommands?: ServiceCommand[];
 }
 
+export interface SandboxPathSpec {
+	homeDir: string;
+	workspaceDir: string;
+}
+
 export interface CreateSandboxOpts {
 	sessionId: string;
 	/** Session mode, used for mode-specific tool injection and behavior. */
@@ -82,11 +87,13 @@ export interface CreateSandboxOpts {
 	snapshotHasDeps?: boolean;
 	/** Resolved service commands (configuration-level or fallback from repos). Cross-repo aware. */
 	serviceCommands?: ConfigurationServiceCommand[];
-	/** Decrypted secret file writes to materialize inside /home/user/workspace at boot. */
+	/** Decrypted secret file writes to materialize inside the provider workspace root at boot. */
 	secretFileWrites?: Array<{ filePath: string; content: string }>;
 	coderTemplateId?: string;
 	coderTemplateVersionPresetId?: string | null;
 	coderTemplateParameters?: CoderTemplateParameterValue[];
+	coderGatewayUrl?: string;
+	coderSessionToken?: string;
 }
 
 export interface CreateSandboxResult {
@@ -116,6 +123,8 @@ export interface SandboxProvider {
 	readonly supportsPause?: boolean;
 	/** True if provider auto-pauses sandboxes on expiry (no explicit snapshot needed for idle sessions). */
 	readonly supportsAutoPause?: boolean;
+	/** Provider-owned sandbox home/workspace paths used by gateway runtime and tool flows. */
+	getSandboxPaths(repos?: RepoSpec[]): SandboxPathSpec;
 
 	/**
 	 * Ensure a sandbox exists for this session.

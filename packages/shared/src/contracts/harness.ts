@@ -103,6 +103,7 @@ export interface CodingHarnessStartInput {
 	baseUrl: string;
 	authToken?: string;
 	runtimeHeaders?: Record<string, string>;
+	cwd: string;
 	title?: string;
 }
 
@@ -114,6 +115,7 @@ export interface CodingHarnessResumeInput {
 	baseUrl: string;
 	authToken?: string;
 	runtimeHeaders?: Record<string, string>;
+	cwd: string;
 	sessionId?: string | null;
 	title?: string;
 }

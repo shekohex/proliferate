@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from "crypto";
+import path from "path";
 import { type Logger, createLogger } from "@proliferate/logger";
 import { sessions } from "@proliferate/services";
 import type {
@@ -935,15 +936,23 @@ export class SessionHub {
 			throw new Error("No sandbox available");
 		}
 
-		const folderPath = folder.startsWith("/") ? folder : `/home/user/workspace/${folder}`;
-		this.log("Reading verification files", { folder, folderPath });
-
 		const providerType = context.session.sandbox_provider as SandboxProviderType;
 		const provider = getSandboxProvider(providerType);
+		const workspaceDir = provider.getSandboxPaths(context.repos).workspaceDir;
 
 		if (!provider.readFiles) {
 			throw new Error("Provider does not support reading files");
 		}
+
+		const folderPath = folder.startsWith("/") ? folder : path.posix.resolve(workspaceDir, folder);
+		if (
+			!folder.startsWith("/") &&
+			!folderPath.startsWith(`${workspaceDir}/`) &&
+			folderPath !== workspaceDir
+		) {
+			throw new Error("Invalid verification folder");
+		}
+		this.log("Reading verification files", { folder, folderPath });
 
 		const files = await provider.readFiles(context.session.sandbox_id, folderPath);
 
@@ -1222,6 +1231,7 @@ export class SessionHub {
 		return new GitOperations(
 			info.provider,
 			info.sandboxId,
+			info.provider.getSandboxPaths(this.runtime.getContext().repos).workspaceDir,
 			this.runtime.getContext().gitIdentity,
 			this.runtime.getContext().repos,
 			this.logger,

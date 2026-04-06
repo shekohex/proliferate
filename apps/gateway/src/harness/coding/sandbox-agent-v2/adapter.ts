@@ -75,6 +75,7 @@ export class SandboxAgentV2CodingHarnessAdapter implements CodingHarnessAdapter 
 			input.baseUrl,
 			serverId,
 			this.agentName,
+			input.cwd,
 			input.runtimeHeaders,
 		);
 		agentSessionIds.set(serverId, agentSessionId);
@@ -114,6 +115,7 @@ export class SandboxAgentV2CodingHarnessAdapter implements CodingHarnessAdapter 
 		const created = await this.start({
 			baseUrl: input.baseUrl,
 			authToken: input.authToken,
+			cwd: input.cwd,
 			runtimeHeaders: input.runtimeHeaders,
 			title: input.title,
 		});

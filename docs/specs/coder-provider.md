@@ -158,10 +158,10 @@ The settings surface should let an org configure one or more Coder deployments a
 - Admins should be able to inspect template parameters before creating or binding workspaces.
 
 **Current slice**
-- `/settings/environments` now renders a Coder settings section when `DEFAULT_SANDBOX_PROVIDER=coder`.
-- Coder connection details remain env-backed (`CODER_URL`, `CODER_SESSION_TOKEN`), but template defaults now persist as org-scoped settings on `organization.coder_settings`.
-- The settings UI can save the default template, optional preset ID, and default parameter values.
-- Template parameter metadata is fetched lazily from Coder rich-parameter metadata and rendered dynamically in the UI.
+- Coder connection details remain env-backed (`CODER_URL`, `CODER_SESSION_TOKEN`).
+- Template catalog data is still fetched live from Coder rich-parameter metadata.
+- Repo/environment configuration owns the selected template and user-meaningful parameter overrides.
+- Hakim templates now compose the released Proliferate runtime module and expose Proliferate control parameters (`enable_proliferate`, `proliferate_gateway_url`, `proliferate_session_id`, `proliferate_session_token`, `proliferate_release_ref`) that Proliferate manages internally rather than surfacing in the UI.
 
 **References**
 - `packages/codersdk/src/api.ts`
@@ -187,11 +187,12 @@ Resolve a workspace creation payload by layering the Coder template definition w
 - Default resolution must be deterministic for the same template version and binding state.
 
 **Current slice**
-- The setup/onboarding flow now lets the user choose a Coder template for a repo-backed environment before the configuration is created.
+- The setup/onboarding flow lets the user choose a Coder template for a repo-backed environment before the configuration is created.
 - Parameter inputs are derived from the selected template's rich parameters, including type, form kind, icons, options, and validation metadata.
-- Org-level default values come from persisted Coder settings, not env.
-- The selected template ID and parameter values are persisted on the configuration and passed through session runtime into `CreateSandboxOpts` for Coder-backed sessions.
-- Existing configurations can edit the Coder template and parameter overrides from `/settings/environments`.
+- Proliferate-managed template parameters are hidden from the UI and are not persisted as user overrides.
+- The selected template ID and user-visible parameter values are persisted on the configuration and passed through session runtime into `CreateSandboxOpts` for Coder-backed sessions.
+- At sandbox acquisition time, the gateway/provider injects the managed Hakim/Proliferate parameters (`enable_proliferate=true`, release ref, gateway URL, session ID, session token) into the workspace create/start payload if the selected template supports them.
+- Existing configurations can edit the visible Coder template overrides from `/settings/environments`.
 
 **References**
 - `packages/codersdk/src/typesGenerated.ts`
@@ -232,11 +233,12 @@ Prompt routing should be able to attach a session to an already running Coder wo
 - `SandboxProviderType` and the shared provider factory now accept `coder`.
 - `packages/shared/src/providers/coder.ts` provides an env-backed `CoderProvider` that uses `packages/codersdk` for auth, template validation, workspace lookup, workspace start, and workspace creation.
 - `ensureSandbox()` prefers a stored workspace ID, then falls back to a deterministic session-derived workspace name before creating a new workspace.
-- `createSandbox()` validates `CODER_TEMPLATE_ID` and creates a workspace for the authenticated Coder user.
-- Initial create/start parameters can be supplied through `CODER_TEMPLATE_VERSION_PRESET_ID` and `CODER_TEMPLATE_PARAMETERS_JSON`, which map to Coder's `template_version_preset_id` and `rich_parameter_values` fields.
+- `createSandbox()` validates the selected Coder template and creates a workspace for the authenticated Coder user.
+- Initial create/start parameters now combine repo-scoped saved values with Proliferate-managed hidden Hakim module parameters.
 - `checkSandboxes()` reports live workspaces from Coder build status for existing metering and liveness checks.
 - Resulting `sandboxId` is the Coder workspace ID.
-- `tunnelUrl` and `previewUrl` are intentionally empty in this slice because ACP/bootstrap bridge wiring is not implemented yet.
+- Runtime URL resolution now prefers the Hakim `proliferate` app URL and falls back to legacy app URLs only when the bridged app is absent.
+- Provider-owned sandbox path resolution now drives ACP session cwd, gateway git operations, and verification file reads. For Coder, the provider resolves `home=/home/coder` and infers the workspace root from the Hakim layout (`/home/coder/project` for shared roots, `/home/coder/project/<repo>` for single-repo workspaces).
 
 **Invariants**
 - Prompt-time acquisition should prefer reuse over provisioning.
@@ -343,7 +345,8 @@ Use Coder workspace persistence as the recovery boundary instead of a sandbox sn
 
 ## 9. Known Limitations & Tech Debt
 
-- [ ] **Connection profile still env-backed** — host and auth remain process env today; only template defaults moved into persisted org settings.
+- [ ] **Connection profile still env-backed** — host and auth remain process env today.
+- [ ] **Template defaults/settings cleanup** — older org-scoped settings code still exists, but active workspace provisioning now relies on repo-scoped selections plus managed hidden params.
 - [ ] **No native snapshot parity** — Coder stop/start persistence is not the same as Modal/E2B snapshot restore.
 - [ ] **Bridge dependency is mandatory for full parity** — `packages/codersdk` does not directly cover file/command IO.
 - [ ] **Template schema drift risk** — template defaults may become stale if catalog sync lags control-plane changes.

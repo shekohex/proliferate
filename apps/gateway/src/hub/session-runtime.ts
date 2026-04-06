@@ -470,6 +470,8 @@ export class SessionRuntime {
 				coderTemplateId: config.coderTemplateId ?? undefined,
 				coderTemplateVersionPresetId: config.coderTemplateVersionPresetId ?? undefined,
 				coderTemplateParameters: config.coderTemplateParameters,
+				coderGatewayUrl: this.env.gatewayUrl,
+				coderSessionToken: sandboxMcpToken,
 			});
 			this.logLatency("runtime.ensure_ready.provider.ensure_sandbox", {
 				provider: provider.type,
@@ -545,6 +547,7 @@ export class SessionRuntime {
 			// ------------------------------------------------------------------
 			this.runtimeBaseUrl = live.openCodeUrl ?? live.previewUrl;
 			this.serviceCommands = config.serviceCommands;
+			const sandboxPaths = provider.getSandboxPaths(config.repos);
 			if (!this.runtimeBaseUrl) {
 				throw new Error("Missing sandbox runtime endpoint");
 			}
@@ -552,6 +555,7 @@ export class SessionRuntime {
 			const ensureAcpStartMs = Date.now();
 			const resumed = await this.adapter.resume({
 				baseUrl: this.runtimeBaseUrl,
+				cwd: sandboxPaths.workspaceDir,
 				runtimeHeaders: this.runtimeHeaders,
 				sessionId: live.openCodeSessionId ?? live.session.coding_agent_session_id,
 			});
