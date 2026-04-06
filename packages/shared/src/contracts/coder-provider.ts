@@ -1,5 +1,23 @@
 import { z } from "zod";
 
+export const DEFAULT_CODER_PROLIFERATE_RELEASE_REF = "coder-module-v0.1.0";
+
+export const MANAGED_CODER_TEMPLATE_PARAMETER_NAMES = [
+	"enable_proliferate",
+	"proliferate_release_ref",
+	"proliferate_gateway_url",
+	"proliferate_session_id",
+	"proliferate_session_token",
+] as const;
+
+const MANAGED_CODER_TEMPLATE_PARAMETER_NAME_SET = new Set<string>(
+	MANAGED_CODER_TEMPLATE_PARAMETER_NAMES,
+);
+
+export function isManagedCoderTemplateParameterName(name: string): boolean {
+	return MANAGED_CODER_TEMPLATE_PARAMETER_NAME_SET.has(name);
+}
+
 export const CoderTemplateParameterValueSchema = z.object({
 	name: z.string(),
 	value: z.string(),
