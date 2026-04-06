@@ -125,6 +125,16 @@ OPENCODE_TOOLS_DIR="$HOME/.opencode-tools"
 PYTHON_SITE_PACKAGES="$LOCAL_SHARE/python/lib/python${PYTHON_VERSION}/site-packages"
 mkdir -p "$LOCAL_BIN" "$LOCAL_SHARE" "$PROLIFERATE_HOME/caddy" "$HOME/.config/opencode" "$HOME/.local/share/opencode" "$OPENCODE_TOOLS_DIR" "$ARG_WORKDIR"
 
+NODE_BIN="$(resolve_node_bin 2>/dev/null || true)"
+if [ -n "$NODE_BIN" ]; then
+	export PATH="$(dirname "$NODE_BIN"):$PATH"
+fi
+
+UV_BIN="$(resolve_uv_bin 2>/dev/null || true)"
+if [ -n "$UV_BIN" ]; then
+	export PATH="$(dirname "$UV_BIN"):$PATH"
+fi
+
 run_pre_install_script() {
   if [ -n "$ARG_PRE_INSTALL_SCRIPT" ]; then
     local script_path="/tmp/proliferate-pre-install.sh"
