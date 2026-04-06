@@ -105,7 +105,7 @@ variable "install_caddy" {
 variable "caddy_version" {
   type        = string
   description = "Pinned Caddy version installed via mise into the user-local tool directory."
-  default     = "2"
+  default     = "2.10.2"
 }
 
 variable "sandbox_agent_install_url" {

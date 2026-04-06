@@ -115,8 +115,8 @@ install_caddy() {
   fi
 
   mkdir -p "$MISE_DATA_DIR" "$MISE_CONFIG_DIR"
-  mise use --global "caddy@${ARG_CADDY_VERSION}"
-  mise install "caddy@${ARG_CADDY_VERSION}"
+  mise use --global "aqua:caddyserver/caddy@${ARG_CADDY_VERSION}"
+  mise install "aqua:caddyserver/caddy@${ARG_CADDY_VERSION}"
 }
 
 install_opencode() {

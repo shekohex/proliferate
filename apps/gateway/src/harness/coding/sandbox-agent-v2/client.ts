@@ -216,13 +216,13 @@ export function logAcpLookupError(error: unknown, context: Record<string, unknow
 
 /**
  * Poll sandbox-agent until it responds to GET /v1/acp.
- * Retries with exponential backoff up to ~30 seconds total.
+ * Retries with bounded exponential backoff for slower first-boot environments.
  */
 export async function waitForAcpReady(
 	baseUrl: string,
 	runtimeHeaders?: Record<string, string>,
-	maxAttempts = 15,
-	initialDelayMs = 500,
+	maxAttempts = 100,
+	initialDelayMs = 1_000,
 ): Promise<void> {
 	let delay = initialDelayMs;
 	const startedAt = Date.now();
@@ -247,7 +247,7 @@ export async function waitForAcpReady(
 		if (attempt < maxAttempts) {
 			logger.debug({ attempt, nextDelayMs: delay }, "Waiting for sandbox-agent");
 			await new Promise((resolve) => setTimeout(resolve, delay));
-			delay = Math.min(delay * 1.5, 5_000);
+			delay = Math.min(delay * 1.5, 10_000);
 		}
 	}
 	throw new Error(`sandbox-agent not ready after ${maxAttempts} attempts`);
