@@ -26,6 +26,82 @@ resolve_bun_bin() {
   return 1
 }
 
+resolve_node_bin() {
+	local candidate
+	for candidate in \
+		/usr/local/share/mise/installs/node/*/bin/node \
+		"$HOME/.local/share/mise/installs/node/*/bin/node"; do
+		if [ -x "$candidate" ]; then
+			printf '%s\n' "$candidate"
+			return 0
+		fi
+	done
+
+	if command_exists mise; then
+		local node_bin
+		node_bin="$(mise which node 2>/dev/null || true)"
+		if [ -n "$node_bin" ] && [ -x "$node_bin" ]; then
+			printf '%s\n' "$node_bin"
+			return 0
+		fi
+	fi
+
+	if command_exists node; then
+		command -v node
+		return 0
+	fi
+
+	return 1
+}
+
+resolve_npm_bin() {
+	local node_bin
+	node_bin="$(resolve_node_bin 2>/dev/null || true)"
+	if [ -n "$node_bin" ]; then
+		local npm_bin
+		npm_bin="$(dirname "$node_bin")/npm"
+		if [ -x "$npm_bin" ]; then
+			printf '%s\n' "$npm_bin"
+			return 0
+		fi
+	fi
+
+	if command_exists npm; then
+		command -v npm
+		return 0
+	fi
+
+	return 1
+}
+
+resolve_uv_bin() {
+	local candidate
+	for candidate in \
+		/usr/local/share/mise/installs/uv/*/uv-*/uv \
+		"$HOME/.local/share/mise/installs/uv/*/uv-*/uv"; do
+		if [ -x "$candidate" ]; then
+			printf '%s\n' "$candidate"
+			return 0
+		fi
+	done
+
+	if command_exists mise; then
+		local uv_bin
+		uv_bin="$(mise which uv 2>/dev/null || true)"
+		if [ -n "$uv_bin" ] && [ -x "$uv_bin" ]; then
+			printf '%s\n' "$uv_bin"
+			return 0
+		fi
+	fi
+
+	if command_exists uv; then
+		command -v uv
+		return 0
+	fi
+
+	return 1
+}
+
 ARG_RELEASE_BASE_URL=${ARG_RELEASE_BASE_URL:?}
 ARG_SANDBOX_DAEMON_ASSET_NAME=${ARG_SANDBOX_DAEMON_ASSET_NAME:-proliferate-sandbox-daemon.cjs}
 ARG_SANDBOX_MCP_ASSET_NAME=${ARG_SANDBOX_MCP_ASSET_NAME:-proliferate-sandbox-mcp.tgz}
@@ -78,6 +154,13 @@ install_sandbox_mcp() {
     return 0
   fi
 
+  local npm_bin
+  npm_bin="$(resolve_npm_bin 2>/dev/null || true)"
+  if [ -z "$npm_bin" ]; then
+    echo "npm is required to install sandbox-mcp" >&2
+    exit 1
+  fi
+
   local package_path="$LOCAL_SHARE/$ARG_SANDBOX_MCP_ASSET_NAME"
   local install_root="$HOME/.local/lib/node_modules/proliferate-sandbox-mcp"
   download_asset "$ARG_SANDBOX_MCP_ASSET_NAME" "$package_path"
@@ -86,8 +169,8 @@ install_sandbox_mcp() {
   tar -xzf "$package_path" -C "$install_root" --strip-components=1
   (
     cd "$install_root"
-    node -e 'const fs=require("fs"); const pkg=JSON.parse(fs.readFileSync("package.json","utf8")); delete pkg.devDependencies; delete pkg.scripts; fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));'
-    npm install --no-audit --no-fund --omit=dev express@^4.18.2 node-pty@^1.1.0 ws@^8.16.0
+		"$npm_bin" pkg delete devDependencies scripts
+		"$npm_bin" install --no-audit --no-fund --omit=dev
   )
   ln -sf "$install_root/dist/bundle.cjs" "$LOCAL_BIN/sandbox-mcp"
   ln -sf "$install_root/dist/proliferate.cjs" "$LOCAL_BIN/proliferate"
@@ -158,21 +241,37 @@ install_opencode() {
 }
 
 install_sqlite_vec() {
-	if command_exists python3 && PYTHONPATH="$PYTHON_SITE_PACKAGES${PYTHONPATH:+:$PYTHONPATH}" python3 -c "import sqlite_vec" >/dev/null 2>&1; then
-		return 0
-	fi
-
-	if ! command_exists uv; then
+	local uv_bin
+	uv_bin="$(resolve_uv_bin 2>/dev/null || true)"
+	if [ -z "$uv_bin" ]; then
 		echo "uv is required to install sqlite-vec" >&2
 		exit 1
 	fi
 
+	if command_exists python3 && PYTHONPATH="$PYTHON_SITE_PACKAGES${PYTHONPATH:+:$PYTHONPATH}" python3 -c "import sqlite_vec" >/dev/null 2>&1; then
+		return 0
+	fi
+
 	mkdir -p "$PYTHON_SITE_PACKAGES"
-	uv pip install --python "$(command -v python3)" --target "$PYTHON_SITE_PACKAGES" sqlite-vec
+	"$uv_bin" pip install --python "$(command -v python3)" --target "$PYTHON_SITE_PACKAGES" sqlite-vec
 }
 
 install_proliferate_home_deps() {
-  if node -e "try { require('$PROLIFERATE_HOME/node_modules/better-sqlite3'); console.log('ok') } catch { console.log('missing') }" | grep -q ok; then
+	local node_bin
+	node_bin="$(resolve_node_bin 2>/dev/null || true)"
+	if [ -z "$node_bin" ]; then
+		echo "node is required to install Proliferate runtime dependencies" >&2
+		exit 1
+	fi
+
+	local npm_bin
+	npm_bin="$(resolve_npm_bin 2>/dev/null || true)"
+	if [ -z "$npm_bin" ]; then
+		echo "npm is required to install Proliferate runtime dependencies" >&2
+		exit 1
+	fi
+
+	if "$node_bin" -e "try { require('$PROLIFERATE_HOME/node_modules/better-sqlite3'); console.log('ok') } catch { console.log('missing') }" | grep -q ok; then
     return 0
   fi
 
@@ -182,11 +281,18 @@ install_proliferate_home_deps() {
   fi
   (
     cd "$PROLIFERATE_HOME"
-    npm install --no-audit --no-fund better-sqlite3@11
+		"$npm_bin" install --no-audit --no-fund better-sqlite3@11
   )
 }
 
 install_opencode_tools() {
+	local npm_bin
+	npm_bin="$(resolve_npm_bin 2>/dev/null || true)"
+	if [ -z "$npm_bin" ]; then
+		echo "npm is required to install OpenCode tools" >&2
+		exit 1
+	fi
+
   if [ -d "$OPENCODE_TOOLS_DIR/node_modules/@aws-sdk" ] && [ -d "$OPENCODE_TOOLS_DIR/node_modules/@opencode-ai" ]; then
     return 0
   fi
@@ -197,7 +303,7 @@ install_opencode_tools() {
 
   (
     cd "$OPENCODE_TOOLS_DIR"
-    npm install --no-audit --no-fund @aws-sdk/client-s3 @opencode-ai/plugin
+		"$npm_bin" install --no-audit --no-fund @aws-sdk/client-s3 @opencode-ai/plugin
   )
 }
 
