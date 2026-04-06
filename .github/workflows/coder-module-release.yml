@@ -1,0 +1,91 @@
+name: Coder Module Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 0.1.0)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "coder-module-v*"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version_tag: ${{ steps.resolve.outputs.version_tag }}
+    steps:
+      - name: Resolve version tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
+            echo "version_tag=coder-module-v${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  tag:
+    needs: prepare
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create git tag
+        env:
+          VERSION_TAG: ${{ needs.prepare.outputs.version_tag }}
+        run: |
+          set -euo pipefail
+          git tag -f "$VERSION_TAG"
+          git push origin "$VERSION_TAG" --force
+
+  build-and-release:
+    needs: [prepare, tag]
+    if: always() && needs.prepare.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package coder module release assets
+        run: ./scripts/release/package-coder-module-assets.sh
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ needs.prepare.outputs.version_tag }}
+        run: |
+          set -euo pipefail
+          NOTES_FILE="/tmp/coder-module-release-notes.md"
+          echo "Proliferate Coder module release ${VERSION_TAG}" > "$NOTES_FILE"
+          gh release delete "$VERSION_TAG" --yes 2>/dev/null || true
+          gh release create "$VERSION_TAG" \
+            dist/release/coder-module/* \
+            --title "$VERSION_TAG" \
+            --notes-file "$NOTES_FILE" \
+            --latest

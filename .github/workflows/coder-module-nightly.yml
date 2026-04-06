@@ -1,0 +1,61 @@
+name: Coder Module Nightly
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package coder module release assets
+        run: ./scripts/release/package-coder-module-assets.sh
+
+      - name: Update rolling nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="coder-module-nightly"
+          NOTES_FILE="/tmp/coder-module-nightly-notes.md"
+
+          git tag -d "$TAG" 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          git tag "$TAG"
+          git push origin "$TAG" --force
+
+          cat > "$NOTES_FILE" <<EOF
+          Rolling nightly release for the Proliferate Coder module.
+
+          Commit: ${GITHUB_SHA}
+          EOF
+
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" \
+            dist/release/coder-module/* \
+            --title "$TAG" \
+            --notes-file "$NOTES_FILE" \
+            --prerelease
